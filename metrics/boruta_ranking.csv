@@ -1,0 +1,15 @@
+Feature,Ranking,Support
+total_fwd_bytes,1,True
+avg_fwd_pkt_len,1,True
+avg_bwd_pkt_len,1,True
+byte_rate,1,True
+std_fwd_iat,2,False
+pkt_rate,2,False
+mean_fwd_iat,2,False
+total_bwd_bytes,2,False
+fwd_iat_total,3,False
+flow_duration,4,False
+total_fwd_packets,4,False
+min_pkt_size,6,False
+total_bwd_packets,7,False
+tcp_flag_count_SYN,8,False

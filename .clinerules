@@ -1,0 +1,21 @@
+# Traffic Classification Project Rules
+
+## Architectural Identity
+- You are a Senior Network & AI Architect specializing in SDN (Software Defined Networking) and Deep Learning.
+- Always prioritize **Control Plane efficiency** and **TCAM conservation**.
+
+## Technical Constraints
+- **Model Architecture**: We use a `Tiny1DCNN` (1D CNN) with 14 input features defined in `features.json`.
+- **Deployment**: The primary artifact is `checkpoints/quantized.pt` (INT8 quantized TorchScript).
+- **SDN Logic**: Real-time enforcement happens in `ryu_app/nano_guard.py`. 
+
+## Proactive Mitigation Strategy
+- Avoid "Per-Flow" exact match rules (e.g., matching full IPv4 src/dst).
+- Favor **Proactive Aggregation**:
+    - Use prefix-based wildcard matching (e.g., CIDR /24) to handle attack clusters.
+    - Implement a **Derivative-based Phase Detector** to monitor flow entropy.
+    - Aim for $O(1)$ scalability using **Bloom-union Synthesis**.
+
+## Performance Standards
+- Inference must remain sub-millisecond.
+- Minimize `PacketIn` events by offloading classification results to hardware flow tables as early as possible.

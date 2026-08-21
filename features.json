@@ -1,0 +1,16 @@
+[
+  "flow_duration",
+  "total_fwd_packets",
+  "total_bwd_packets",
+  "total_fwd_bytes",
+  "total_bwd_bytes",
+  "avg_fwd_pkt_len",
+  "avg_bwd_pkt_len",
+  "std_fwd_iat",
+  "mean_fwd_iat",
+  "pkt_rate",
+  "byte_rate",
+  "fwd_iat_total",
+  "min_pkt_size",
+  "tcp_flag_count_SYN"
+]
