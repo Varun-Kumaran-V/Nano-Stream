@@ -1,0 +1,69 @@
+{
+  "manifestVersion": "1.0.0",
+  "project": "Nano-Stream / IntentQoS",
+  "generatedAt": "2026-10-30T23:28:33Z",
+  "description": "Historical research artifact manifest cataloging frozen Nano-Stream baseline models, feature rankings, and evaluation records.",
+  "canonicalHistoricalSchema": {
+    "featureFile": "features.json",
+    "featureCount": 14,
+    "sha256": "d2d9bbe6c533c2fa4c238adc652e35fdc4340bf74cdc767ec7506ca2d8894b57",
+    "features": [
+      "destination_port",
+      "flow_duration",
+      "total_fwd_packets",
+      "total_backward_packets",
+      "total_length_of_fwd_packets",
+      "total_length_of_bwd_packets",
+      "fwd_packet_length_max",
+      "fwd_packet_length_min",
+      "fwd_packet_length_mean",
+      "bwd_packet_length_max",
+      "bwd_packet_length_min",
+      "bwd_packet_length_mean",
+      "flow_bytes_s",
+      "flow_packets_s"
+    ]
+  },
+  "historicalCheckpoints": {
+    "floatBaseline": {
+      "path": "checkpoints/float.pt",
+      "sha256": "1189860735e251ed72ec4a8d1e3e92becc961f8d1eb0b53b8716a0165974cd2f",
+      "architecture": "Tiny1DCNN",
+      "format": "PyTorch state_dict"
+    },
+    "floatScripted": {
+      "path": "checkpoints/float_scripted.pt",
+      "sha256": "0f41aea2675963b02911d626b400442753484165d10e30cdedb5cd87ead8d9cb",
+      "architecture": "Tiny1DCNN",
+      "format": "TorchScript"
+    },
+    "cnnQuantized": {
+      "path": "checkpoints/cnn_quantized.pt",
+      "sha256": "4f09b70854b196184025a5671eaba95e5f062fe7aa0b57fab22b9070b554a38a",
+      "architecture": "Tiny1DCNN (Dynamic INT8 Quantized)",
+      "format": "TorchScript"
+    },
+    "bilstmBaseline": {
+      "path": "checkpoints/bilstm_scripted.pt",
+      "sha256": "57a42bef243ff1067465bd164f9b43b96bf569415c5adbeed7f01cb3747e3a1a",
+      "architecture": "BiLSTMClassifier",
+      "format": "TorchScript"
+    },
+    "transformerBaseline": {
+      "path": "checkpoints/transformer_scripted.pt",
+      "sha256": "6f073a5c65bed6b479e9be76aec963aa255ebda8b64a764af61bb49db7996c4b",
+      "architecture": "TransformerClassifier",
+      "format": "TorchScript"
+    }
+  },
+  "historicalMetrics": {
+    "borutaRanking": {
+      "path": "metrics/boruta_ranking.csv",
+      "sha256": "c67dde302e139de82b7c08ef8ca6cc48f6bc01c8f93be0988773187ad59f0953"
+    },
+    "offlineBaselines": {
+      "path": "metrics/offline_baselines.csv",
+      "sha256": "485eb7fc2e2275e95fbc85e9169bed7067d21bafd5351c42db445d339d2eb13c"
+    }
+  }
+}

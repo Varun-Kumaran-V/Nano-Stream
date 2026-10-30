@@ -22,6 +22,53 @@ Nano-Stream is associated with a published research paper.
 
 ---
 
+## IntentQoS Extension — Case Study 3 (TELIPORT Season 4)
+
+Built upon the Nano-Stream research foundation, **IntentQoS** provides an adaptive Quality of Service (QoS) reference platform for mixed residential broadband traffic:
+- **Residential Taxonomy:** 7 canonical classes (`VIDEO_CALL`, `GAMING`, `VIDEO_STREAMING`, `BULK_TRANSFER`, `BACKGROUND_UPDATE_BACKUP`, `INTERACTIVE_WEB_OTHER`, `UNKNOWN`).
+- **Sub-Millisecond Inference:** Quantized INT8 1D-CNN achieving median latency of **0.018 ms (18.0 µs)** per flow on CPU.
+- **Privacy-Preserving:** Operates solely on the first 32 packet headers; zero inspection or persistence of application payloads.
+- **Deterministic Precedence Policy:** Starvation-free priority allocation with server-owned temporary intent expiry.
+- **Linux `tc` Enforcement:** Hierarchical Token Bucket (HTB) with Fair Queueing Controlled Delay (FQ-CoDel) leaf queues.
+- **Verified REST & SSE API:** FastAPI server with full OpenAPI contract (`docs/api/openapi.yaml`).
+- **Accepted React Frontend:** Complete integration in `Frontend/intentqos-—-adaptive-network-qos-console` with DEMO and strict LIVE modes.
+
+### Key Documentation Links
+- [Operations & Runbook](docs/runbook.md)
+- [System Architecture](docs/architecture/architecture.md)
+- [Architectural Decision Records (ADRs)](docs/architecture/decisions.md)
+- [OpenAPI Specification](docs/api/openapi.yaml)
+- [Home Traffic Taxonomy](docs/data/taxonomy.md)
+- [Canonical Schema Manifest](docs/data/schema_manifest.json)
+- [Benchmark Summary Report](results/benchmark_summary.md)
+- [Security Review](docs/security/review.md)
+- [Licenses & Limitations](docs/licenses_and_limitations.md)
+- [Task Tracker CSV](Docs/IntentQoS_Remaining_Work_Tracker.csv)
+
+### Quick Commands
+```bash
+# Run automated pytest test suite (27 passing tests)
+.venv/bin/pytest tests/ -v
+
+# Run latency benchmark on quantized INT8 model
+.venv/bin/python scripts/measure_latency.py --model checkpoints/home_cnn_quantized.pt --samples 500
+
+# Execute full baseline benchmark matrix
+.venv/bin/python scripts/run_experiments.py
+
+# Start FastAPI Management API
+.venv/bin/python -m uvicorn api.server:app --port 8080
+
+# Build Frontend
+cd Frontend/intentqos-—-adaptive-network-qos-console && npm run build
+```
+
+---
+
+## Research Paper
+
+---
+
 ## Research Paper
 
 **IEEE Xplore:**

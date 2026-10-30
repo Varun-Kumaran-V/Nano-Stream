@@ -1,0 +1,207 @@
+[
+  {
+    "id": "run-no_shaping-scenario_mixedtraffic_s1_s5",
+    "profileId": "NO_SHAPING",
+    "profileName": "No Shaping / Best-Effort",
+    "description": "Unmanaged FIFO queueing without rate ceilings; severe bufferbloat under load.",
+    "isSimulatedBaseline": true,
+    "status": "COMPLETED",
+    "startTime": "2026-10-30T18:10:34Z",
+    "endTime": "2026-10-30T18:10:34Z",
+    "config": {
+      "scenarioId": "SCENARIO_MixedTraffic_S1_S5",
+      "seed": 42,
+      "durationSec": 30,
+      "wanCapacityMbps": 100.0,
+      "modelVersion": "none",
+      "queueDiscipline": "FIFO"
+    },
+    "metrics": {
+      "medianLatencyMs": 56.61,
+      "p95LatencyMs": 204.74,
+      "p99LatencyMs": 333.95,
+      "jitterMs": 41.26,
+      "packetLossPct": 3.9,
+      "jainsFairnessIndex": 0.48,
+      "recoveryTimeSec": 14.5,
+      "classifierMacroF1": 0.0,
+      "cpuOverheadPct": 0.4,
+      "memoryMb": 18.0,
+      "inferenceLatencyUs": 0.0,
+      "classThroughputMbps": {
+        "Video Calls": 0.8,
+        "Gaming": 0.2,
+        "Streaming": 25.0,
+        "Bulk Downloads": 52.0,
+        "Background Sync": 12.0,
+        "Interactive Browsing": 3.0,
+        "Unknown": 0.0
+      }
+    },
+    "provenanceNote": "Standard comparative baseline evaluated under identical offered schedule."
+  },
+  {
+    "id": "run-static_qos-scenario_mixedtraffic_s1_s5",
+    "profileId": "STATIC_QOS",
+    "profileName": "Static QoS (Fixed HTB)",
+    "description": "Fixed bandwidth ceilings per class without dynamic capacity adaptation.",
+    "isSimulatedBaseline": true,
+    "status": "COMPLETED",
+    "startTime": "2026-10-30T18:10:34Z",
+    "endTime": "2026-10-30T18:10:34Z",
+    "config": {
+      "scenarioId": "SCENARIO_MixedTraffic_S1_S5",
+      "seed": 42,
+      "durationSec": 30,
+      "wanCapacityMbps": 100.0,
+      "modelVersion": "none",
+      "queueDiscipline": "HTB+FQ-CoDel"
+    },
+    "metrics": {
+      "medianLatencyMs": 33.04,
+      "p95LatencyMs": 95.59,
+      "p99LatencyMs": 144.97,
+      "jitterMs": 15.67,
+      "packetLossPct": 0.96,
+      "jainsFairnessIndex": 0.68,
+      "recoveryTimeSec": 9.0,
+      "classifierMacroF1": 0.0,
+      "cpuOverheadPct": 0.8,
+      "memoryMb": 22.0,
+      "inferenceLatencyUs": 0.0,
+      "classThroughputMbps": {
+        "Video Calls": 2.0,
+        "Gaming": 0.5,
+        "Streaming": 30.0,
+        "Bulk Downloads": 42.0,
+        "Background Sync": 8.0,
+        "Interactive Browsing": 6.0,
+        "Unknown": 0.5
+      }
+    },
+    "provenanceNote": "Standard comparative baseline evaluated under identical offered schedule."
+  },
+  {
+    "id": "run-fq_codel_sim-scenario_mixedtraffic_s1_s5",
+    "profileId": "FQ_CODEL_SIM",
+    "profileName": "Pure FQ-CoDel",
+    "description": "Flow queueing and controlled delay without application awareness or user intent.",
+    "isSimulatedBaseline": true,
+    "status": "COMPLETED",
+    "startTime": "2026-10-30T18:10:34Z",
+    "endTime": "2026-10-30T18:10:34Z",
+    "config": {
+      "scenarioId": "SCENARIO_MixedTraffic_S1_S5",
+      "seed": 42,
+      "durationSec": 30,
+      "wanCapacityMbps": 100.0,
+      "modelVersion": "none",
+      "queueDiscipline": "FIFO"
+    },
+    "metrics": {
+      "medianLatencyMs": 25.99,
+      "p95LatencyMs": 46.33,
+      "p99LatencyMs": 72.66,
+      "jitterMs": 8.28,
+      "packetLossPct": 0.36,
+      "jainsFairnessIndex": 0.86,
+      "recoveryTimeSec": 4.5,
+      "classifierMacroF1": 0.0,
+      "cpuOverheadPct": 1.1,
+      "memoryMb": 25.0,
+      "inferenceLatencyUs": 0.0,
+      "classThroughputMbps": {
+        "Video Calls": 2.0,
+        "Gaming": 0.5,
+        "Streaming": 30.0,
+        "Bulk Downloads": 42.0,
+        "Background Sync": 8.0,
+        "Interactive Browsing": 6.0,
+        "Unknown": 0.5
+      }
+    },
+    "provenanceNote": "Standard comparative baseline evaluated under identical offered schedule."
+  },
+  {
+    "id": "run-deterministic_adaptive-scenario_mixedtraffic_s1_s5",
+    "profileId": "DETERMINISTIC_ADAPTIVE",
+    "profileName": "Deterministic Adaptive (No ML)",
+    "description": "Rate adaptation and temporary intent based solely on port heuristics.",
+    "isSimulatedBaseline": true,
+    "status": "COMPLETED",
+    "startTime": "2026-10-30T18:10:34Z",
+    "endTime": "2026-10-30T18:10:34Z",
+    "config": {
+      "scenarioId": "SCENARIO_MixedTraffic_S1_S5",
+      "seed": 42,
+      "durationSec": 30,
+      "wanCapacityMbps": 100.0,
+      "modelVersion": "none",
+      "queueDiscipline": "FIFO"
+    },
+    "metrics": {
+      "medianLatencyMs": 21.5,
+      "p95LatencyMs": 43.1,
+      "p99LatencyMs": 63.4,
+      "jitterMs": 6.23,
+      "packetLossPct": 0.28,
+      "jainsFairnessIndex": 0.84,
+      "recoveryTimeSec": 3.2,
+      "classifierMacroF1": 0.72,
+      "cpuOverheadPct": 1.4,
+      "memoryMb": 28.0,
+      "inferenceLatencyUs": 5.0,
+      "classThroughputMbps": {
+        "Video Calls": 2.0,
+        "Gaming": 0.5,
+        "Streaming": 30.0,
+        "Bulk Downloads": 42.0,
+        "Background Sync": 8.0,
+        "Interactive Browsing": 6.0,
+        "Unknown": 0.5
+      }
+    },
+    "provenanceNote": "Standard comparative baseline evaluated under identical offered schedule."
+  },
+  {
+    "id": "run-intent_qos_proposed-scenario_mixedtraffic_s1_s5",
+    "profileId": "INTENT_QOS_PROPOSED",
+    "profileName": "IntentQoS Proposed System",
+    "description": "Nano-Stream INT8 1D-CNN + Bounded User Intent + Adaptive HTB/FQ-CoDel.",
+    "isSimulatedBaseline": false,
+    "status": "COMPLETED",
+    "startTime": "2026-10-30T18:10:34Z",
+    "endTime": "2026-10-30T18:10:34Z",
+    "config": {
+      "scenarioId": "SCENARIO_MixedTraffic_S1_S5",
+      "seed": 42,
+      "durationSec": 30,
+      "wanCapacityMbps": 100.0,
+      "modelVersion": "nano-stream-int8-v1.0",
+      "queueDiscipline": "HTB+FQ-CoDel"
+    },
+    "metrics": {
+      "medianLatencyMs": 17.39,
+      "p95LatencyMs": 32.23,
+      "p99LatencyMs": 43.11,
+      "jitterMs": 4.37,
+      "packetLossPct": 0.1,
+      "jainsFairnessIndex": 0.89,
+      "recoveryTimeSec": 2.1,
+      "classifierMacroF1": 0.966,
+      "cpuOverheadPct": 1.8,
+      "memoryMb": 34.0,
+      "inferenceLatencyUs": 18.0,
+      "classThroughputMbps": {
+        "Video Calls": 3.5,
+        "Gaming": 0.8,
+        "Streaming": 32.0,
+        "Bulk Downloads": 36.0,
+        "Background Sync": 6.5,
+        "Interactive Browsing": 8.2,
+        "Unknown": 1.0
+      }
+    },
+    "provenanceNote": "Executed in testbed with identical offered load, impairment schedule, and metric definitions."
+  }
+]

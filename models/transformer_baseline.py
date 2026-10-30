@@ -6,7 +6,7 @@ FILE: models/transformer_baseline.py
 PURPOSE
 -------
 Defines the Transformer-based baseline architecture used to compare
-Nano-Stream's Tiny1DCNN against a more attention-oriented sequence model.
+Nano-Stream's Tiny1DCNN against an attention-oriented sequence model.
 
 ROLE IN NANOSTREAM
 ------------------
@@ -21,11 +21,12 @@ CLASSES
 
 CLASS: PositionalEncoding
 -------------------------
-Provides sinusoidal positional information to the Transformer representation.
+Provides sinusoidal positional information to the Transformer representation
+with correct broadcasting for batch_first=True tensors: (batch, seq_len, d_model).
 
 CLASS: TransformerClassifier
 ----------------------------
-Processes the 14-feature vector as a sequence.
+Processes the 14-feature vector as a sequence where each feature is a token.
 
 INPUT
 -----
@@ -38,17 +39,17 @@ initially contains one scalar value.
 
 ARCHITECTURE
 ------------
-Feature vector
+Feature vector (B, n_features)
     ↓
-sequence representation
+Sequence representation (B, seq_len, 1)
     ↓
-Linear: 1 → 64
+Linear projection: 1 → d_model (64)
     ↓
-Positional Encoding
+Positional Encoding (broadcasting across batch dimension: (1, seq_len, d_model))
     ↓
-Transformer Encoder
+Transformer Encoder (batch_first=True, 2 layers, 4 heads)
     ↓
-Mean pooling across sequence
+Global Average Pooling across sequence dimension (dim=1)
     ↓
 Linear → 64
     ↓
@@ -58,117 +59,77 @@ Dropout(0.2)
     ↓
 Linear → n_classes
 
-DEFAULT TRANSFORMER CONFIGURATION
----------------------------------
-d_model:
-    64
-
-attention heads:
-    4
-
-encoder layers:
-    2
-
-feedforward dimension:
-    128
-
-dropout:
-    0.2
-
 OUTPUT
 ------
 Classification logits:
 
     (B, n_classes)
 
-FORWARD()
----------
-INPUT:
-    (B, n_features)
-
-PROCESS:
-    1. Convert features into sequence representation.
-    2. Project scalar feature values into d_model dimensions.
-    3. Add positional information.
-    4. Apply Transformer encoder.
-    5. Average sequence representations.
-    6. Apply fully connected classification layers.
-
-OUTPUT:
-    (B, n_classes)
-
 DEPENDENCIES
 ------------
-PyTorch.
-
-DOWNSTREAM USE
---------------
-Used by:
-
-    train.py
-
-for baseline comparison.
-
-CHECK 2 STATUS
---------------
-Runtime test:
-    PASS
-
-The Transformer model successfully processes the intended feature shape and
-produces classification outputs.
-
-DOCUMENTATION NOTE
-------------------
-The positional encoding documentation/comments use the traditional
-(seq_len, batch, d_model) terminology, while the Transformer encoder is
-configured with batch_first=True.
-
-The actual tested execution works, but the comments should be clarified so
-future developers do not misunderstand the tensor layout.
-
-V1 ACTION
----------
-KEEP as a baseline.
-
-Clarify tensor-shape documentation during repository cleanup.
+PyTorch (torch, torch.nn).
 
 ===============================================================================
 """
 
-# models/transformer_baseline.py
 import math
 import torch
 import torch.nn as nn
 
+
 class PositionalEncoding(nn.Module):
-    """Classic sinusoidal positional encoding."""
-    def __init__(self, d_model, max_len=5000):
+    """
+    Classic sinusoidal positional encoding supporting batch_first=True layouts.
+
+    Tensors entering forward() are shaped (batch_size, seq_len, d_model).
+    The stored positional table has shape (1, max_len, d_model) to broadcast
+    correctly across arbitrary batch sizes.
+    """
+    def __init__(self, d_model: int, max_len: int = 5000):
         super().__init__()
-        pe = torch.zeros(max_len, d_model)
+        pe = torch.zeros(max_len, d_model, dtype=torch.float32)
         pos = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2, dtype=torch.float32) *
-                             (-math.log(10000.0) / d_model))
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2, dtype=torch.float32) * (-math.log(10000.0) / d_model)
+        )
         pe[:, 0::2] = torch.sin(pos * div_term)
         pe[:, 1::2] = torch.cos(pos * div_term)
-        pe = pe.unsqueeze(1)  # (max_len, 1, d_model)
+        pe = pe.unsqueeze(0)  # Shape: (1, max_len, d_model)
         self.register_buffer('pe', pe)
 
-    def forward(self, x):
-        # x: (seq_len, batch, d_model)
-        seq_len = x.size(0)
-        x = x + self.pe[:seq_len]
-        return x
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Add positional encoding to sequence tokens.
+
+        Args:
+            x (torch.Tensor): Input sequence of shape (B, seq_len, d_model).
+
+        Returns:
+            torch.Tensor: Position-encoded tensor of shape (B, seq_len, d_model).
+        """
+        seq_len = x.size(1)
+        return x + self.pe[:, :seq_len, :]
+
 
 class TransformerClassifier(nn.Module):
-    def __init__(self, n_features: int, n_classes: int,
-                 d_model: int = 64,
-                 nhead: int = 4,
-                 num_layers: int = 2,
-                 dim_feedforward: int = 128,
-                 dropout: float = 0.2):
+    """
+    Transformer baseline classifier for multi-class flow classification.
+    """
+    def __init__(
+        self,
+        n_features: int,
+        n_classes: int,
+        d_model: int = 64,
+        nhead: int = 4,
+        num_layers: int = 2,
+        dim_feedforward: int = 128,
+        dropout: float = 0.2,
+    ):
         super().__init__()
 
         self.seq_len = n_features
+        self.d_model = d_model
+        self.n_classes = n_classes
 
         self.input_proj = nn.Linear(1, d_model)
         encoder_layer = nn.TransformerEncoderLayer(
@@ -176,36 +137,47 @@ class TransformerClassifier(nn.Module):
             nhead=nhead,
             dim_feedforward=dim_feedforward,
             dropout=dropout,
-         batch_first=True
+            batch_first=True,
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.pos_enc = PositionalEncoding(d_model, max_len=500)
+        self.pos_enc = PositionalEncoding(d_model=d_model, max_len=500)
         self.fc = nn.Sequential(
             nn.Linear(d_model, 64),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(64, n_classes)
+            nn.Linear(64, n_classes),
         )
 
-    def forward(self, x):
-        # x: (B, n_features)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass converting feature vector into logits.
 
-        x = x.unsqueeze(-1)          # (B, seq_len, 1)
-        x = self.input_proj(x)       # (B, seq_len, d_model)
+        Args:
+            x (torch.Tensor): Batch tensor of shape (B, n_features).
 
-        x = self.pos_enc(x)          # add positional encoding
-        x = self.transformer(x)      # (B, seq_len, d_model)
+        Returns:
+            torch.Tensor: Class logits of shape (B, n_classes).
+        """
+        # x: (B, n_features) -> (B, seq_len, 1)
+        x = x.unsqueeze(-1)
+        x = self.input_proj(x)  # (B, seq_len, d_model)
 
-        x = x.mean(dim=1)            # global average pool over sequence
-        logits = self.fc(x)
+        x = self.pos_enc(x)     # (B, seq_len, d_model)
+        x = self.transformer(x) # (B, seq_len, d_model)
+
+        x = x.mean(dim=1)       # Global average pool over sequence -> (B, d_model)
+        logits = self.fc(x)     # (B, n_classes)
 
         return logits
 
+
 if __name__ == "__main__":
-    # quick sanity check with same input shape convention
     n_features = 14
-    n_classes = 5
+    n_classes = 7
     m = TransformerClassifier(n_features=n_features, n_classes=n_classes)
-    x = torch.randn(8, n_features)   # (batch, n_features)
+    # Test batch size 8 != seq_len 14
+    x = torch.randn(8, n_features)
     y = m(x)
-    print("Output shape:", y.shape)  # expected (8, 5)
+    print("TransformerClassifier output shape:", y.shape)
+    assert y.shape == (8, 7), f"Expected (8, 7), got {y.shape}"
+    print("[PASS] Positional encoding and Transformer forward verified.")

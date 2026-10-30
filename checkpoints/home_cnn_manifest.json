@@ -1,0 +1,185 @@
+{
+  "modelArchitecture": "cnn",
+  "checkpointPath": "checkpoints/home_cnn.pt",
+  "nFeatures": 14,
+  "featureColumns": [
+    "destination_port",
+    "flow_duration_ms",
+    "total_fwd_packets",
+    "total_bwd_packets",
+    "total_fwd_bytes",
+    "total_bwd_bytes",
+    "fwd_packet_len_mean",
+    "fwd_packet_len_std",
+    "bwd_packet_len_mean",
+    "bwd_packet_len_std",
+    "fwd_iat_mean_ms",
+    "bwd_iat_mean_ms",
+    "flow_bytes_per_sec",
+    "flow_packets_per_sec"
+  ],
+  "classes": [
+    "BACKGROUND_UPDATE_BACKUP",
+    "BULK_TRANSFER",
+    "GAMING",
+    "INTERACTIVE_WEB_OTHER",
+    "UNKNOWN",
+    "VIDEO_CALL",
+    "VIDEO_STREAMING"
+  ],
+  "bestEpoch": 14,
+  "bestValAccuracy": 0.9643,
+  "bestValMacroF1": 0.9642,
+  "testAccuracy": 0.9664,
+  "testMacroF1": 0.9663,
+  "perClassMetrics": {
+    "BACKGROUND_UPDATE_BACKUP": {
+      "precision": 0.9758713136729222,
+      "recall": 0.91,
+      "f1-score": 0.9417852522639069,
+      "support": 400.0
+    },
+    "BULK_TRANSFER": {
+      "precision": 0.9925558312655087,
+      "recall": 1.0,
+      "f1-score": 0.9962640099626401,
+      "support": 400.0
+    },
+    "GAMING": {
+      "precision": 0.9851851851851852,
+      "recall": 0.9975,
+      "f1-score": 0.991304347826087,
+      "support": 400.0
+    },
+    "INTERACTIVE_WEB_OTHER": {
+      "precision": 0.9564102564102565,
+      "recall": 0.9325,
+      "f1-score": 0.9443037974683545,
+      "support": 400.0
+    },
+    "UNKNOWN": {
+      "precision": 0.9365853658536586,
+      "recall": 0.96,
+      "f1-score": 0.9481481481481482,
+      "support": 400.0
+    },
+    "VIDEO_CALL": {
+      "precision": 0.9350961538461539,
+      "recall": 0.9725,
+      "f1-score": 0.9534313725490197,
+      "support": 400.0
+    },
+    "VIDEO_STREAMING": {
+      "precision": 0.9851116625310173,
+      "recall": 0.9925,
+      "f1-score": 0.9887920298879203,
+      "support": 400.0
+    }
+  },
+  "confusionMatrix": [
+    [
+      364,
+      0,
+      0,
+      4,
+      6,
+      22,
+      4
+    ],
+    [
+      0,
+      400,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      399,
+      0,
+      1,
+      0,
+      0
+    ],
+    [
+      2,
+      0,
+      2,
+      373,
+      19,
+      4,
+      0
+    ],
+    [
+      2,
+      1,
+      4,
+      9,
+      384,
+      0,
+      0
+    ],
+    [
+      5,
+      0,
+      0,
+      4,
+      0,
+      389,
+      2
+    ],
+    [
+      0,
+      2,
+      0,
+      0,
+      0,
+      1,
+      397
+    ]
+  ],
+  "scaler": {
+    "mean": [
+      11393.9,
+      956.1666272330771,
+      16.401938775510203,
+      21.02938775510204,
+      6429.945,
+      18182.208979591836,
+      384.0886531253737,
+      51.52873672222604,
+      781.5066460457626,
+      57.331474495858565,
+      67.45812242439816,
+      52.1055836624272,
+      39041.406325917145,
+      61.436563286246084
+    ],
+    "scale": [
+      16531.48943469365,
+      620.7956523000307,
+      6.996703036717126,
+      8.547559243018517,
+      6633.148733024458,
+      16332.616903282486,
+      318.9021885366267,
+      33.49217166079951,
+      471.2893557619752,
+      34.836020490158674,
+      60.44887532456858,
+      61.35693404765914,
+      39935.626319298346,
+      45.58736166615766
+    ]
+  },
+  "hyperparameters": {
+    "epochs": 15,
+    "batch": 128,
+    "lr": 0.001,
+    "weight_decay": 1e-05,
+    "seed": 42
+  }
+}

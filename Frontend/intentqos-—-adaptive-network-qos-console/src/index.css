@@ -1,0 +1,153 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
+
+:root,
+[data-theme="light"] {
+  --color-bg: #FFFFFF;
+  --color-bg-subtle: #F2F3F4;
+  --color-surface: #FFFFFF;
+  --color-surface-raised: #FFFFFF;
+  --color-surface-hover: #F7F7F8;
+  --color-text-primary: #171717;
+  --color-text-secondary: #62676D;
+  --color-text-muted: #747980;
+  --color-border: #DCDDDF;
+  --color-border-strong: #B8BCC1;
+  --color-accent: #F26A21;
+  --color-accent-hover: #D95712;
+  --color-accent-pressed: #B9470C;
+  --color-accent-soft: #FFF0E7;
+  --color-on-accent: #171717;
+  --color-focus: #B9470C;
+  --color-success: #18794E;
+  --color-success-soft: #E8F5EE;
+  --color-warning: #8A4B08;
+  --color-warning-soft: #FFF4D6;
+  --color-danger: #B42332;
+  --color-danger-soft: #FDEBED;
+  --color-info: #315C91;
+  --color-info-soft: #EAF2FB;
+  --color-chart-1: #F26A21;
+  --color-chart-2: #3F566B;
+  --color-chart-3: #198754;
+  --color-chart-4: #7558A6;
+  --color-chart-5: #B98721;
+  --color-overlay: rgba(16, 18, 20, 0.48);
+  --shadow-card: 0 1px 2px rgba(17, 24, 39, 0.05), 0 8px 24px rgba(17, 24, 39, 0.04);
+  --spotlight-radial: rgba(242, 106, 33, 0.06);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --color-bg: #0B0B0D;
+  --color-bg-subtle: #111114;
+  --color-surface: #17171B;
+  --color-surface-raised: #202025;
+  --color-surface-hover: #27272D;
+  --color-text-primary: #F5F5F7;
+  --color-text-secondary: #B0B0B8;
+  --color-text-muted: #92929C;
+  --color-border: #303036;
+  --color-border-strong: #484850;
+  --color-accent: #D4D4D8;
+  --color-accent-hover: #E4E4E7;
+  --color-accent-pressed: #C4C4CC;
+  --color-accent-soft: #29292F;
+  --color-on-accent: #17171B;
+  --color-focus: #E4E4E7;
+  --color-success: #66D6A0;
+  --color-success-soft: #14271E;
+  --color-warning: #F0C36A;
+  --color-warning-soft: #302616;
+  --color-danger: #FF858D;
+  --color-danger-soft: #321A20;
+  --color-info: #A9C6EE;
+  --color-info-soft: #182538;
+  --color-chart-1: #E4E4E7;
+  --color-chart-2: #A1A1AA;
+  --color-chart-3: #7BCFA4;
+  --color-chart-4: #B6A2E6;
+  --color-chart-5: #E3BE76;
+  --color-overlay: rgba(0, 0, 0, 0.68);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.25), 0 12px 32px rgba(0, 0, 0, 0.18);
+  --spotlight-radial: rgba(212, 212, 216, 0.06);
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    background-color: var(--color-bg);
+    color: var(--color-text-primary);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html,
+    body {
+      transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  body {
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--color-bg);
+    color: var(--color-text-primary);
+    letter-spacing: 0.005em;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: var(--color-accent-soft);
+    color: var(--color-text-primary);
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    text-wrap: balance;
+  }
+
+  .font-mono, code, pre, .tabular-nums {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Accessible keyboard focus ring across all interactive elements */
+  button:focus-visible,
+  a:focus-visible,
+  select:focus-visible,
+  input:focus-visible,
+  [role="button"]:focus-visible,
+  [role="tab"]:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  button:not(:disabled):active {
+    transform: scale(0.985);
+  }
+}
+
+/* Custom subtle scrollbars for tables and logs */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-subtle);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}

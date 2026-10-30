@@ -1,0 +1,321 @@
+INTENTQOS FRONTEND REFINEMENT PROMPT — TASK-MANAGER-INSPIRED DATA-DENSE UI + CONTEXTUAL HELP + GEMINI ASSISTANT
+
+Modify the EXISTING IntentQoS project in place. Do not create a replacement app, do not throw away existing functionality, and do not change the chosen theme palette.
+
+ROLE
+Act as a senior product designer, React 19 + TypeScript engineer, data-visualization specialist, accessibility engineer, and secure Gemini API integrator. First audit the current frontend implementation and its state/data flows, then implement the requirements below incrementally. Verify the result with real build/lint/test commands and report what actually passed.
+
+USER'S INTENT — IMPLEMENT THIS, NOT A GENERIC REDESIGN
+The user wants the operational console to feel more like the uploaded Windows Task Manager Performance screen:
+1. A narrow, clickable, icon-first navigation rail that leaves as much horizontal space as possible for charts and meaningful data.
+2. A more data-dense, graph-led interface: charts and compact metric visualizations should communicate the state faster than long descriptive text and oversized explanatory cards.
+3. The UI should still be understandable to a first-time visitor, so icon-only navigation must have good tooltips, accessible names, clear active state, and a way to expand labels. Do not blindly remove all text.
+4. The project uses specialist terms and project-defined concepts. The user wants a way to select/highlight any relevant term or phrase and ask what it means, ideally through a contextual “Explain” action.
+5. Provide a searchable Help / Glossary section, plus a Gemini-powered help chatbot that can explain terms and answer questions about this specific IntentQoS interface.
+6. Preserve the existing L5 Light theme (White / Black / Signal Orange) and D1 Dark theme (Obsidian / Platinum) and the current theme switch.
+
+SOURCE AUDIT REQUIRED BEFORE EDITING
+The current archive contains a React 19 + TypeScript + Vite app with Tailwind CSS v4, Motion, Recharts and Lucide. Important existing files:
+- `src/App.tsx` — app shell, current sidebar, navigation, landing/console view, global simulation and DEMO/LIVE state.
+- `src/index.css` — central theme variables and base styles.
+- `src/main.tsx` — React mount and ThemeProvider.
+- `src/context/ThemeContext.tsx` and `src/components/ThemeToggle.tsx` — existing L5/D1 theme context and toggle.
+- `src/pages/LandingPage.tsx` — landing page and project overview.
+- `src/pages/OverviewPage.tsx` — current six KPI cards, charts, scenario controls and 2D network topology.
+- `src/pages/LiveTrafficPage.tsx` — filters, active-flow table and selected-flow detail.
+- `src/pages/CapacityCongestionPage.tsx` — capacity and congestion metrics/charts.
+- `src/pages/IntentsPolicyPage.tsx` — policy and user-intent controls.
+- `src/pages/ExperimentsBenchmarksPage.tsx` — benchmark comparison charts and exports.
+- `src/pages/ModelInsightsPage.tsx` — model metrics and confusion-matrix/latency visualizations.
+- `src/pages/SettingsDiagnosticsPage.tsx` — settings, backend connectivity and diagnostics.
+- `src/components/NetworkTopology2D.tsx` — interactive SVG topology.
+- `src/components/ScenarioControlBar.tsx`, `src/components/LiveDisconnectedPanel.tsx`, `src/components/SpotlightCard.tsx`, `src/components/NetworkHeroScene.tsx`.
+- `src/services/demoEngine.ts` and `src/services/dataProvider.ts` — simulation and live-provider logic.
+- `src/types/qos.ts` — domain types.
+- `src/config/projectLinks.ts` — verified research URL and null repository URL.
+- `package.json`, `vite.config.ts`, `tsconfig.json`, `.env.example`, `README.md`.
+
+Inspect the actual current version of every frontend file before editing. Some of the notes above describe the archive at handoff; confirm rather than assume. Produce a brief implementation map internally or in the final summary: which files own layout, navigation, state, charts, help content, and API calls. Identify existing controls and avoid duplicate controls.
+
+IMPORTANT FINDINGS TO RESPECT
+- The current sidebar already has a manual collapsed state (`sidebarCollapsed`) and uses Lucide icons. Collapsed mode currently hides labels and sets `title` tooltips. Improve this existing behavior rather than adding a second sidebar.
+- Sidebar state currently appears to initialize expanded and is not persisted. Make icon-rail mode the default on desktop if it improves usable chart width, and persist the user's expanded/collapsed preference. Provide an explicit expand control. Do not use hover-only expansion that causes accidental layout shifts.
+- Mobile already has a separate menu/drawer pattern; preserve and improve it rather than forcing a tiny icon rail on narrow screens.
+- The overview already has six KPI cards with mini sparklines, an area chart, scenario controls, and an interactive 2D topology. Improve hierarchy and chart real estate; do not remove analytical details that matter.
+- The project already supports a global theme context with L5 Light and D1 Dark palettes. Continue to use semantic CSS variables and `useTheme()`; do not hard-code a new palette.
+- The project intentionally distinguishes deterministic simulated demo telemetry from verified live telemetry. Preserve the provenance labels and the rule that unverified LIVE mode must not display synthetic data as live.
+- `@google/genai` is already listed in dependencies, and `.env.example` mentions `GEMINI_API_KEY`, but do not assume the chatbot is implemented. Search the source. If it is not actually wired, implement it properly.
+- Never fabricate a GitHub/source-code URL. The actual project paper is configured in `src/config/projectLinks.ts`.
+
+DESIGN DIRECTION: TASK MANAGER-INSPIRED, NOT A PIXEL CLONE
+Aim for the information density and calm utility of Windows Task Manager Performance:
+- compact fixed-width navigation rail at desktop, with clear icons and active indicator;
+- content area gets most of the width;
+- strong page title, small provenance/status text, concise metric labels;
+- clear graph gridlines and large chart plotting areas;
+- restrained borders and surface hierarchy using current theme tokens;
+- less redundant explanatory copy inside the operational dashboard;
+- more visual hierarchy between primary graph, supporting metrics, and lower-priority detail;
+- keep project identity and visual polish—do not imitate Windows typography or exact UI.
+- Avoid dashboard “card soup”: not every metric needs its own oversized bordered card. Group related metrics and use a few clear sections.
+- Avoid making everything a chart: use charts where trends/comparison matter, compact numbers for current values, and tables for inspectable records.
+- Do not make critical data hard to find just to save words.
+
+PHASE A — NAVIGATION RAIL AND INFORMATION DENSITY
+
+A1. Desktop navigation rail
+- Make the desktop default state a narrow icon-first rail (target roughly 56–72 px; choose a value that fits icons and active indicators). Persist user preference in localStorage.
+- Keep the existing seven navigation destinations:
+  1. Overview
+  2. Live Traffic
+  3. Capacity & Congestion
+  4. Intents & Policy
+  5. Experiments & Benchmarks
+  6. Model Insights
+  7. Settings & Diagnostics
+- Keep icon selection semantically appropriate and consistent. Use Lucide outline icons with consistent size/stroke. Do not mix random icon styles.
+- Use an obvious active-state marker (e.g. a narrow accent bar and subtle token-based background). Active state must be distinguishable without color alone.
+- Each icon button must have `aria-label`, `title` or an accessible tooltip with the full destination label, and a visible keyboard focus ring. The tooltip must work for mouse hover and keyboard focus, have a small delay, and not obscure the icon.
+- Add an accessible expand/collapse button with a descriptive `aria-label` and tooltip. Expanded mode shows icon + label + optional short subtitle only if space allows. Collapsed mode shows icon-only.
+- Keep the bottom area for the system mode/provenance indicator, help entry and theme controls, but compact it in icon mode. Do not bury important connection status behind a hover-only tooltip.
+- If possible, show a tiny connection/mode dot with a text/tooltip status, but do not imply LIVE is connected unless verified.
+- Keep the “Back to project site” action available with a clear tooltip when collapsed.
+- Do not add multiple overlapping sidebar toggles or duplicate navigation.
+
+A2. Responsive behavior
+- Desktop/tablet: use collapsible rail with expanded labels available.
+- Mobile: preserve a slide-over navigation drawer with labels, backdrop, close-on-Escape, close-on-navigation, correct focus handling and body-scroll behavior. Do not force icon-only navigation on mobile.
+- Avoid horizontal overflow at 320 px, 375 px, 768 px, 1024 px, and common desktop widths.
+- Sidebar state should persist across reloads but should not prevent the mobile drawer from behaving correctly.
+
+A3. Data-first overview
+- Rework Overview layout after inspecting the current component. Preserve all current information and interactions while giving the primary graph more space.
+- Suggested hierarchy: (1) compact page heading + scenario/mode/provenance, (2) primary time-series graph with a readable time-range selector, (3) compact KPI strip/tiles with large numeric values and tiny sparklines, (4) traffic-class distribution or class throughput visual, (5) network topology and recent policy events in supporting sections.
+- Use sensible grid ratios. On widescreens, the primary graph should occupy the majority of the initial viewport, rather than six equally prominent cards competing for attention.
+- Make KPI labels concise. Put explanations in accessible tooltips/help rather than repeating paragraphs beneath every value.
+- Retain units and provenance. A value like `42` must never appear without the unit or label that gives it meaning.
+- Add compact comparison/status indicators only where supported by existing data.
+- Preserve chart interactions, tooltips, range selection, scenario selection, play/pause, reset, and step controls.
+- Respect reduced motion. Do not use animation to continuously distract from changing values.
+
+A4. Graph quality
+- Use existing Recharts and current `useTheme()` token values. Do not add a second chart library unless there is a clear, documented need.
+- Every chart must update on theme change: grid, axes, tick labels, legends, tooltip, reference lines, cursors and series.
+- Ensure sufficient contrast and distinguish series by both color and legend/label; do not depend on color alone.
+- Add meaningful axis labels/units and clear time ranges. Avoid excessive gridlines.
+- Use `ResponsiveContainer` correctly and avoid zero-height charts in hidden/collapsed layouts.
+- Keep numeric values legible with tabular numerals where appropriate.
+- Keep CSV/JSON export and benchmark comparisons intact.
+- In other pages, use a consistent rule: primary trend visual first, compact metrics second, detail table or explanations below/alongside. Do not force identical layouts where the data has different needs.
+- On Live Traffic, keep search/filter controls discoverable and the table readable. Do not replace a useful table with an ambiguous chart.
+- On Intents & Policy, make policy/intent state and expiration easy to scan. Preserve all create/update/remove/expire actions.
+- On Experiments, keep baselines, units, experimental provenance and export options visible.
+- On Model Insights, show model evidence clearly without implying browser demo metrics are fresh live model evaluations.
+- On Diagnostics, make connected/disconnected state and telemetry provenance obvious.
+
+PHASE B — HELP SYSTEM: GLOSSARY + SEARCH + CONTEXTUAL EXPLANATIONS
+
+B1. Add a Help Center / Glossary destination
+- Add one clear Help entry in the app navigation or shell, without displacing the seven existing operational pages. It can be a dedicated route/view or a drawer/panel, but it must be easy to find from the dashboard and keyboard-accessible.
+- Include a searchable glossary with categorized terms, concise definitions, a practical “why it matters here” explanation, and a “where you see it” field.
+- Provide categories such as:
+  - Networking & QoS
+  - Traffic classification
+  - Capacity & congestion
+  - User intents & policy
+  - Fairness & scheduling
+  - Model / evaluation
+  - Application terminology and data provenance
+- Add aliases/synonyms so searches like “tail latency”, “p99”, “99th percentile”, or “queue delay” can find related concepts.
+- Include clear distinction between general technical definitions and project-specific meanings.
+- The glossary must be useful without AI or network access. Curated local entries are the reliable baseline.
+- Include at least these terms (expand after inspecting the actual UI and type definitions):
+  - QoS
+  - WAN capacity / estimated WAN capacity
+  - Shaping ceiling
+  - Bufferbloat
+  - RTT / median RTT
+  - p95 and p99 tail latency
+  - Jitter
+  - Packet loss
+  - Throughput
+  - Active flow
+  - Traffic class
+  - Confidence score / confidence threshold
+  - Unknown / low-confidence gate
+  - First 32 packets
+  - INT8 quantization
+  - Inference latency
+  - Jain's fairness index
+  - Minimum bandwidth floor
+  - Temporary user intent / TTL
+  - HTB
+  - FQ-CoDel
+  - AQM
+  - Static QoS
+  - Deterministic Demo / Replay
+  - LIVE mode / verified telemetry
+  - Policy event
+  - Model holdout / confusion matrix
+  - Capacity estimate vs configured shaping ceiling
+- Derive accurate definitions from the actual code, README, existing research/project copy, and authoritative sources. Don't invent implementation claims. Mark concepts that are simulated or planned as such.
+
+B2. Search UX
+- Add a fast search input with keyboard shortcut `/` or `Ctrl/Cmd+K` (choose one and show it in the UI). Do not hijack the shortcut while the user is typing in an input, textarea, select, contenteditable region, or while a modal is active.
+- Search term names, aliases, definitions, categories and page names.
+- Show useful empty states and keyboard navigation through results.
+- Selecting a result opens its full explanation and optionally navigates to the relevant page.
+- Include a clear button and Escape-to-close behavior.
+- Keep search usable on mobile.
+
+B3. Explain text that the user highlights
+Implement contextual selection help. The preferred flow:
+1. User highlights/selects a term or short passage within eligible app content.
+2. After the selection is complete (on mouseup or touchend), a small floating toolbar appears near the selection.
+3. Toolbar offers at minimum “Explain” and “Ask AI”; optionally “Copy” if useful.
+4. Clicking “Explain” first searches the local glossary for an exact or alias match. If matched, show the curated explanation immediately. If no match or the user requests more context, offer “Ask Gemini”.
+5. Clicking “Ask AI” opens the help assistant with the selected text prefilled and the current page name/context attached.
+6. The user must explicitly click a toolbar action before any selected text is sent to an AI service. Never automatically send highlighted text to a remote API.
+7. The toolbar should position itself near the selection, remain inside the viewport, flip above/below as necessary, and reposition/close appropriately on scroll, resize, click-away and Escape.
+8. Do not show the toolbar during the drag itself. Only show after selection settles.
+9. Restrict activation to a clearly scoped content root, not the whole document. Ignore selections within input/textarea/select/contenteditable, navigation labels, buttons, code editors, and form controls unless there is a deliberate accessible explanation affordance.
+10. Ignore whitespace-only selections and cap selected text length (e.g. 500 characters) with a helpful notice if too long.
+11. Avoid breaking native text selection, copy/paste, browser context menu, link navigation or screen-reader interaction.
+12. Use browser Selection API (`document.getSelection()` / `selectionchange`) and a scoped `pointerup`/`touchend` approach or a small maintained library if it genuinely reduces bugs. Do not install an unmaintained or oversized dependency just for this.
+13. Support keyboard alternatives: when text is selected, `Ctrl/Cmd+Shift+E` opens the Explain action; do not hijack typing contexts. Also make the Help search/assistant accessible without a mouse.
+14. The floating toolbar and explanation panel must work in both L5 Light and D1 Dark themes.
+
+B4. Right-click / context menu
+- Do NOT globally override the browser's right-click context menu. That breaks normal browser workflows and is a poor default.
+- If adding a custom context menu, only open it when the user right-clicks selected text inside the eligible content root; include an “Explain selected text” option and allow the native menu for unselected text or outside the app content. Prefer the floating selection toolbar as the main experience because it is discoverable and works better on touch devices.
+- Document the implemented behavior in Help > Shortcuts.
+
+B5. Explanation panel
+- Create a reusable, accessible popover or side panel (prefer a right-side drawer on desktop and a full-screen/near-full-screen sheet on mobile) with:
+  - selected term/snippet,
+  - short plain-English definition,
+  - “In IntentQoS” project-specific interpretation,
+  - why it matters,
+  - a concrete example from the app,
+  - related terms,
+  - source/provenance label (e.g. curated glossary, project code/docs, Gemini-generated).
+- Show a curated glossary answer immediately when available; AI should deepen it rather than delay it.
+- Clearly label AI-generated explanations as AI-generated and not authoritative.
+- Include a button to ask a follow-up in the chatbot.
+- Do not fabricate references. If a definition is based on project code or the project's own demo behavior, state that.
+
+PHASE C — GEMINI HELP ASSISTANT
+
+C1. First confirm what is already present
+- `@google/genai` is listed in package.json and `.env.example` mentions `GEMINI_API_KEY`. Search the source to determine whether an actual working integration exists. Do not assume dependency presence means the chatbot already works.
+- Keep the SDK dependency if it is useful; avoid adding a second Gemini SDK.
+
+C2. Chatbot UI
+- Add a Help Assistant in the Help Center, accessible from the selection toolbar and optionally a compact floating help button in the dashboard.
+- Use a polished but restrained chat panel consistent with L5/D1.
+- Include:
+  - welcome state with example prompts;
+  - conversation history for the current browser session;
+  - user and assistant message distinction;
+  - loading/thinking state;
+  - error and retry states;
+  - Stop/cancel if streaming is implemented;
+  - clear conversation control;
+  - source labels and related glossary entries;
+  - copy response action;
+  - keyboard accessible input and send button;
+  - mobile layout;
+  - concise disclaimer that it can make mistakes.
+- Useful suggested prompts: “What does p99 latency mean?”, “Why does IntentQoS use an Unknown class?”, “What is the difference between estimated WAN capacity and shaping ceiling?”, “Which values on this page are simulated?”, “Explain Jain’s fairness index in this project.”
+- Give the model the active page, selected term/text, and a small relevant glossary/code-derived context. Do not send the entire UI state or all user data by default.
+
+C3. Gemini behavior and grounding
+- Use the official `@google/genai` SDK already in the project if compatible with the current version, and check the current official SDK docs for correct API usage.
+- Prefer server-side API calls through a small backend endpoint/proxy. The current frontend should call a same-origin endpoint such as `/api/help/chat`; the server reads `GEMINI_API_KEY` from server environment variables and calls Gemini.
+- Do not put a secret in `VITE_GEMINI_API_KEY`, source code, a public config file, a URL, localStorage, or a committed `.env`. Do not expose the API key in the browser bundle.
+- Inspect `vite.config.ts`, scripts and existing backend layout before adding a server. If the project currently has no server, implement the smallest compatible server/route and configure Vite development proxy as appropriate, while keeping the frontend build working. Document deployment requirements.
+- Keep `.env.example` as a placeholder only; ensure `.env` is ignored by git and never write a real key.
+- Google currently offers a free Gemini API tier for certain models with limits; this is not unlimited/free production hosting. Free-tier prompts and responses may be used to improve Google products under applicable terms. Explain this in Help/Settings before sending data to Gemini and avoid transmitting sensitive data. Cite official docs in README or implementation notes.
+- Add rate limiting, request size limits, input validation, safe error responses and timeouts server-side. Do not return stack traces or secrets to the client.
+- Make model configurable by server environment variable (with a documented sensible supported default). Do not hardcode an obsolete model name without verifying it against current official docs.
+- Keep a local glossary fallback if the API key is missing, the request fails, quota is exhausted, or the user is offline. The Help Center must remain functional without Gemini.
+- Never send text to Gemini without explicit user action.
+- Treat selected text and user messages as untrusted input, not system instructions. Use a strict system instruction: answer questions about IntentQoS and its networking/model terms; distinguish general networking facts from this project's simulated/prototype behavior; never claim a feature is live unless the supplied context says it is verified; if unsure, say so; do not invent values or source citations.
+- Avoid logging raw user prompts or selected text by default. If request logging is needed, log metadata only (status, duration, token count where available, request ID).
+- Add a simple per-session request cap and short prompt/output limits to reduce abuse/cost. Make failures understandable.
+- If no server-side route can be implemented in this environment, do not fake an operational chatbot: create the UI and local glossary, provide an explicit setup status, and document the missing secure backend integration.
+
+C4. API behavior
+- Use a typed request/response contract, e.g. `{ message, selectedText?, activePage?, history? }` and `{ answer, sourceType, relatedTerms?, requestId? }`.
+- Validate maximum message size, maximum selected text size, number/size of history messages, and allowed content types.
+- Return clear errors for missing key, quota/rate limit, timeout, invalid input, and provider failure without leaking details.
+- Avoid sending large history; cap the number of prior messages and summarize/truncate as needed.
+- Add cancellation/timeout and loading states.
+- Do not make ungrounded “Google search” calls by default. Prefer project-specific curated context and official references; do not claim live web grounding unless actually configured.
+
+PHASE D — GLOSSARY DATA AND PROJECT CONTEXT
+
+- Store glossary data in a typed local module such as `src/help/glossary.ts` or similar. Each entry should have:
+  `id`, `term`, `aliases[]`, `category`, `shortDefinition`, `projectMeaning`, `whyItMatters`, `example`, `relatedTerms[]`, `sourceType`, optional `sourceUrl`, and optional `status` such as `implemented`, `demo-only`, `planned`, `research-foundation`.
+- Keep glossary content separated from UI components.
+- Derive terms from the current source, types, UI copy and project docs. Keep wording honest:
+  - “Available in demo” is not “implemented against a real router”.
+  - Deterministic reference benchmark numbers are not live measurements.
+  - A concept that requires a Python/SDN backend must be labelled as such.
+  - Do not claim actual packet payload inspection; the project emphasizes metadata-only/privacy-preserving features.
+- Add aliases and fuzzy/normalized search (case-insensitive, punctuation-insensitive). Prefer local matching first.
+- Add an “Explain this page” entry point for each dashboard page that summarizes what the page shows, what the main metrics mean, what is simulated, and what actions are safe.
+- Keep Help Center language beginner-friendly without losing technical precision.
+
+PHASE E — QUALITY, SECURITY, AND ACCESSIBILITY
+
+- Preserve existing seven operational pages, landing page, current L5/D1 theme toggle, reduced-motion option, scenario controls, DEMO/LIVE behavior, policy/intent operations, exports, diagnostics, and research links.
+- Do not silently alter simulation math or benchmark results as part of a visual change.
+- Use shared components and typed props. Avoid one giant component or duplicate glossary data across pages.
+- Add error boundaries or localized error UI where appropriate.
+- All new controls must have accessible names, keyboard behavior, visible focus, and adequate hit areas.
+- Respect `prefers-reduced-motion` and the existing reduced-motion setting.
+- Do not use hover as the only interaction trigger.
+- Do not globally hijack right-click, browser shortcuts, text selection or browser navigation.
+- Use portal positioning for floating toolbars/panels where needed and handle clipping/viewport edges.
+- Check contrast in both themes.
+- Avoid unnecessary dependencies; use Lucide, Motion, Recharts, existing CSS variables and the current stack first.
+- Never make synthetic demo values appear to be live network telemetry.
+
+TESTS AND ACCEPTANCE CRITERIA
+
+Run and report the actual results of:
+- `npm run build`
+- `npm run lint`
+- `npx --yes tsx --test src/services/demoEngine.test.ts`
+Add focused tests for new pure logic, especially glossary search/alias matching, shortcut guards, sidebar persistence, selected-text length/eligibility, and API input validation if feasible.
+
+Manually verify:
+1. Desktop sidebar starts icon-first, expands/collapses, and remembers preference.
+2. Every nav icon has a tooltip on hover and focus, an accessible name, and a visible active indicator.
+3. The mobile drawer works with touch, keyboard, Escape and navigation.
+4. Overview has stronger graph hierarchy and meaningful data density without removing controls or provenance.
+5. Other pages retain their existing capabilities and are readable at narrow and wide sizes.
+6. Light and dark themes cover every new and existing component.
+7. Selecting an eligible term shows the toolbar only after selection ends; “Explain” returns local glossary content; “Ask AI” sends only after explicit click.
+8. Text selection inside forms/buttons does not trigger the toolbar.
+9. The custom context menu, if implemented, only handles selected text and does not break normal browser right-click.
+10. Keyboard shortcuts do not trigger while typing in inputs, editing text, or when a modal blocks them.
+11. Help search works without a Gemini key or internet connection.
+12. Chatbot works through the server-side proxy when configured, and shows a truthful setup/fallback state if no key exists.
+13. No API key appears in compiled browser assets, source maps, logs, or client responses.
+14. LIVE mode still withholds synthetic telemetry when the backend is not verified.
+15. No console errors, overflow, inaccessible controls, broken links, or false claims.
+
+DELIVERABLES
+Implement the code, not just a mockup. At completion, provide:
+- concise summary of user-visible changes;
+- list of files created/modified and their responsibilities;
+- architecture/data flow for selection → glossary → Gemini;
+- exact setup steps for the optional Gemini API key and backend endpoint;
+- security/privacy notes about the free tier and data sent;
+- commands run and their real outputs/status;
+- limitations or incomplete tasks, explicitly identified;
+- any decisions where the existing project structure forced a compromise.
+
+Do not claim a task is complete unless it is implemented and verified. Do not fabricate test results. Do not remove existing functionality to make the UI simpler.

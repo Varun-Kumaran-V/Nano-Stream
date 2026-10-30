@@ -5,220 +5,219 @@ FILE: scripts/measure_latency.py
 
 PURPOSE
 -------
-Measures CPU inference latency for a TorchScript model.
+Measures CPU inference latency for a TorchScript model artifact with
+high-resolution monotonic benchmarking, shape verification, and latency
+distribution reporting.
 
 The script reports:
 
-    median latency
+    median latency (P50)
     P95 latency
+    P99 latency
+    mean and standard deviation
 
-in milliseconds.
+in milliseconds and microseconds.
 
 ROLE IN NANOSTREAM
 ------------------
 This is the DEPLOYMENT BENCHMARKING stage.
 
-It is intended to quantify the latency advantage of the optimized
-Nano-Stream model.
+It quantifies the real CPU latency of Nano-Stream model artifacts on the
+target hardware platform.
 
 PIPELINE POSITION
 -----------------
 
-    float_scripted.pt
-          OR
-    cnn_quantized.pt
-          ↓
-    measure_latency.py
-          ↓
-    median / P95 latency
+    float_scripted.pt / cnn_quantized.pt
+            ↓
+    scripts/measure_latency.py
+            ↓
+    P50 / P95 / P99 latency distribution & JSON export
 
 INPUT
 -----
-Command-line argument:
+Command-line arguments:
 
-    --model
+    --model   : Path to TorchScript model file (.pt)
+    --shape   : Optional explicit input shape tuple (e.g. "1,1,14" or "1,14")
+    --samples : Number of benchmark iterations (default: 1000)
+    --warmup  : Number of untimed warmup iterations (default: 50)
+    --threads : Number of intra-op CPU threads (default: 1)
+    --out     : Optional path to save JSON benchmark report with raw samples
 
-Expected input:
-
-    TorchScript model file
-
-Examples:
-
-    checkpoints/float_scripted.pt
-    checkpoints/cnn_quantized.pt
-
-MODEL LOADING
--------------
-Uses:
-
-    torch.jit.load()
-
-with:
-
-    map_location="cpu"
-
-Therefore the current benchmark is CPU-only.
-
-INPUT SHAPE LOGIC
------------------
-The current implementation determines the model input shape by checking
-whether the model path contains the string:
-
-    "cnn"
-
-If true:
-
-    (1, 1, 14)
-
-Otherwise:
-
-    (1, 14)
-
-THIS IS A BUG.
--------------
-The actual Tiny1DCNN TorchScript model requires:
-
-    (1, 1, 14)
-
-The file:
-
-    checkpoints/float_scripted.pt
-
-does not contain "cnn" in its filename.
-
-Therefore the script incorrectly creates:
-
-    (1, 14)
-
-for float_scripted.pt.
-
-This causes a runtime shape error.
-
-CORRECT BEHAVIOR
+SHAPE RESOLUTION
 ----------------
-Both:
+Instead of fragile filename substring heuristics, this script uses explicit
+shape arguments or shape auto-probing to verify compatibility before benchmarking.
 
-    float_scripted.pt
-    cnn_quantized.pt
-
-should currently receive:
-
-    (1, 1, 14)
-
-FUNCTION / PROCESS
-------------------
-1. Parse model path.
-2. Load TorchScript model.
-3. Select input shape.
-4. Generate random input.
-5. Perform 50 warm-up inferences.
-6. Run 1000 timed inferences.
-7. Convert measurements to milliseconds.
-8. Calculate median.
-9. Calculate P95.
-10. Print results.
-
-BENCHMARK OUTPUT
-----------------
-Console output:
-
-    Median: X ms | P95: Y ms
-
-No result file is currently generated.
-
-CHECK 2
--------
-Quantized CNN:
-
-    checkpoints/cnn_quantized.pt
-        → PASS
-
-Float TorchScript:
-
-    checkpoints/float_scripted.pt
-        → FAIL
-
-Failure reason:
-
-    incorrect 2D input shape supplied to a 3D CNN TorchScript model.
-
-THIS IS A CONFIRMED BUG.
-
-ADDITIONAL BENCHMARKING LIMITATIONS
-------------------------------------
-1. Input-shape selection depends on filename rather than model metadata.
-
-2. Uses time.time() for timing.
-
-3. Does not use a high-resolution monotonic benchmark timer.
-
-4. Measures each inference through a Python loop.
-
-5. Does not report mean latency.
-
-6. Does not report standard deviation.
-
-7. Does not record CPU/system information alongside the benchmark.
-
-PAPER RELATIONSHIP
-------------------
-The paper reports:
-
-    FP32 latency  ≈ 2.00 ms/flow
-    INT8 latency  ≈ 1.17 ms/flow
-
-This script reports median/P95 latency, so the exact relationship between
-these reported paper values and this script must be established before
-claiming that this script reproduces the paper benchmark.
-
-V1 ACTION
----------
-MODIFY.
-
-Replace filename-based shape detection with explicit model metadata or
-model-specific configuration.
-
-Improve timing methodology before using this script as a serious benchmark.
+DEPENDENCIES
+------------
+PyTorch, NumPy, Python standard library (time, platform, json).
 
 ===============================================================================
 """
 
-#measure_latency.py
+import argparse
+import json
+import os
+import platform
+import time
+from typing import Dict, List, Optional, Tuple
 
-import argparse, time, torch, numpy as np
+import numpy as np
+import torch
 
-def run_latency(model_path, n=1000):
-    # Load scripted model
+
+def detect_input_shape(model: torch.jit.ScriptModule, candidate_shapes: Optional[List[Tuple[int, ...]]] = None) -> Tuple[int, ...]:
+    """
+    Safely determine the valid input shape for a TorchScript model artifact.
+
+    Args:
+        model: Loaded TorchScript ScriptModule.
+        candidate_shapes: List of shape tuples to probe.
+
+    Returns:
+        Valid shape tuple.
+
+    Raises:
+        ValueError: If none of the candidate shapes are accepted by the model.
+    """
+    if candidate_shapes is None:
+        candidate_shapes = [(1, 1, 14), (1, 14)]
+
+    for shape in candidate_shapes:
+        try:
+            dummy = torch.randn(*shape, dtype=torch.float32)
+            with torch.no_grad():
+                _ = model(dummy)
+            return shape
+        except Exception:
+            continue
+
+    raise ValueError(f"Unable to find compatible input shape among candidates: {candidate_shapes}")
+
+
+def run_latency_benchmark(
+    model_path: str,
+    explicit_shape: Optional[Tuple[int, ...]] = None,
+    n_samples: int = 1000,
+    n_warmup: int = 50,
+    num_threads: int = 1,
+) -> Dict[str, object]:
+    """
+    Execute high-resolution CPU inference latency benchmark.
+
+    Args:
+        model_path: Absolute or relative path to .pt TorchScript model.
+        explicit_shape: Explicit shape tuple if specified.
+        n_samples: Number of timed inference iterations.
+        n_warmup: Warm-up passes.
+        num_threads: PyTorch intra-op CPU threads.
+
+    Returns:
+        Dictionary containing summary statistics, environment metadata, and raw samples.
+    """
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model file not found: {model_path}")
+
+    torch.set_num_threads(num_threads)
     model = torch.jit.load(model_path, map_location="cpu")
     model.eval()
-    
-    # Create dummy input (1 sample, 14 features)
-    # We try to infer input shape. Assuming (1, 1, 14) based on training.
-    if "cnn" in model_path:
-        dummy_input = torch.randn(1, 1, 14)   # Conv1D deployment shape
+
+    if explicit_shape:
+        input_shape = explicit_shape
     else:
-        dummy_input = torch.randn(1, 14)      # sequence models
+        input_shape = detect_input_shape(model)
 
-    # Warmup
-    for _ in range(50):
-        _ = model(dummy_input)
-        
-    # Measure
-    times = []
+    dummy_input = torch.randn(*input_shape, dtype=torch.float32)
+
+    # Warmup phase
     with torch.no_grad():
-        for _ in range(n):
-            t0 = time.time()
+        for _ in range(n_warmup):
             _ = model(dummy_input)
-            t1 = time.time()
-            times.append((t1 - t0) * 1000) # Convert to ms
 
-    arr = np.array(times)
-    return np.median(arr), np.percentile(arr, 95)
+    # Timed inference using high-resolution monotonic timer
+    times_ms: List[float] = []
+    with torch.no_grad():
+        for _ in range(n_samples):
+            t0 = time.perf_counter()
+            _ = model(dummy_input)
+            t1 = time.perf_counter()
+            times_ms.append((t1 - t0) * 1000.0)
+
+    arr = np.array(times_ms, dtype=np.float64)
+    p50 = float(np.percentile(arr, 50))
+    p95 = float(np.percentile(arr, 95))
+    p99 = float(np.percentile(arr, 99))
+    mean = float(np.mean(arr))
+    std = float(np.std(arr))
+
+    report = {
+        "modelPath": model_path,
+        "inputShape": list(input_shape),
+        "sampleCount": n_samples,
+        "warmupCount": n_warmup,
+        "numThreads": num_threads,
+        "environment": {
+            "platform": platform.platform(),
+            "processor": platform.processor(),
+            "pythonVersion": platform.python_version(),
+            "torchVersion": torch.__version__,
+        },
+        "metricsMs": {
+            "p50Median": round(p50, 4),
+            "p95": round(p95, 4),
+            "p99": round(p99, 4),
+            "mean": round(mean, 4),
+            "stdDev": round(std, 4),
+        },
+        "metricsUs": {
+            "p50MedianUs": round(p50 * 1000.0, 1),
+            "p95Us": round(p95 * 1000.0, 1),
+            "p99Us": round(p99 * 1000.0, 1),
+            "meanUs": round(mean * 1000.0, 1),
+        },
+        "rawTimesMs": times_ms,
+    }
+
+    return report
+
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser()
-    p.add_argument("--model", required=True)
-    args = p.parse_args()
-    
-    med, p95 = run_latency(args.model)
-    print(f"Median: {med:.4f} ms | P95: {p95:.4f} ms")
+    parser = argparse.ArgumentParser(description="Measure CPU inference latency for TorchScript models.")
+    parser.add_argument("--model", required=True, help="Path to TorchScript model file")
+    parser.add_argument("--shape", type=str, default=None, help="Explicit comma-separated shape (e.g. 1,1,14)")
+    parser.add_argument("--samples", type=int, default=1000, help="Benchmark sample count")
+    parser.add_argument("--warmup", type=int, default=50, help="Warm-up sample count")
+    parser.add_argument("--threads", type=int, default=1, help="PyTorch CPU thread count")
+    parser.add_argument("--out", type=str, default=None, help="Optional output JSON path")
+
+    args = parser.parse_args()
+
+    explicit = None
+    if args.shape:
+        explicit = tuple(int(x.strip()) for x in args.shape.split(","))
+
+    result = run_latency_benchmark(
+        model_path=args.model,
+        explicit_shape=explicit,
+        n_samples=args.samples,
+        n_warmup=args.warmup,
+        num_threads=args.threads,
+    )
+
+    stats = result["metricsMs"]
+    us_stats = result["metricsUs"]
+    print(
+        f"Model: {args.model} | Shape: {result['inputShape']} | Threads: {args.threads}\n"
+        f"  P50 (Median) : {stats['p50Median']:.4f} ms ({us_stats['p50MedianUs']:.1f} µs)\n"
+        f"  P95          : {stats['p95']:.4f} ms ({us_stats['p95Us']:.1f} µs)\n"
+        f"  P99          : {stats['p99']:.4f} ms ({us_stats['p99Us']:.1f} µs)\n"
+        f"  Mean ± Std   : {stats['mean']:.4f} ± {stats['stdDev']:.4f} ms"
+    )
+
+    if args.out:
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+        with open(args.out, "w") as f:
+            json.dump(result, f, indent=2)
+        print(f"[*] Benchmark report saved -> {args.out}")

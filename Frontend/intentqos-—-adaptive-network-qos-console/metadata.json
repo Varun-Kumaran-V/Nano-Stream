@@ -1,0 +1,6 @@
+{
+  "name": "IntentQoS — Adaptive Network QoS Console",
+  "description": "Adaptive Quality of Service (QoS) monitoring, traffic classification, capacity estimation, and intent-based policy console for mixed home broadband traffic. Built on Nano-Stream research.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

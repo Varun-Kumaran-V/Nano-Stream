@@ -1,0 +1,52 @@
+{
+  "manifestVersion": "1.0.0",
+  "datasetName": "IntentQoS Home Broadband Traffic Corpus",
+  "datasetFile": "data/home_traffic.csv",
+  "sha256": "d965a9cd7dc0e44f2254583f072ec557755c581cce6632faae3b62e4833b4fe7",
+  "totalSamples": 14000,
+  "classes": [
+    "VIDEO_CALL",
+    "GAMING",
+    "VIDEO_STREAMING",
+    "BULK_TRANSFER",
+    "BACKGROUND_UPDATE_BACKUP",
+    "INTERACTIVE_WEB_OTHER",
+    "UNKNOWN"
+  ],
+  "classDistribution": {
+    "VIDEO_CALL": 2000,
+    "GAMING": 2000,
+    "UNKNOWN": 2000,
+    "INTERACTIVE_WEB_OTHER": 2000,
+    "BULK_TRANSFER": 2000,
+    "BACKGROUND_UPDATE_BACKUP": 2000,
+    "VIDEO_STREAMING": 2000
+  },
+  "nSessions": 10,
+  "seed": 42,
+  "featuresCount": 14,
+  "schemaManifest": "docs/data/schema_manifest.json",
+  "taxonomyDoc": "docs/data/taxonomy.md",
+  "trainValTestSplits": {
+    "strategy": "grouped_session_split",
+    "trainSessions": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "valSessions": [
+      8
+    ],
+    "testSessions": [
+      9,
+      10
+    ],
+    "trainPct": 70,
+    "valPct": 10,
+    "testPct": 20
+  }
+}

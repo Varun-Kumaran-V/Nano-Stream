@@ -1,0 +1,614 @@
+openapi: 3.0.3
+info:
+  title: IntentQoS Telemetry & Adaptive Policy REST API
+  description: Versioned OpenAPI contract for the IntentQoS home broadband quality-of-service control plane.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local prototype management API server
+paths:
+  /health:
+    get:
+      summary: Health check probe
+      description: Returns component status for API, telemetry, classifier, and enforcement.
+      responses:
+        '200':
+          description: Operational health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemHealthResponse'
+
+  /status:
+    get:
+      summary: System status snapshot
+      responses:
+        '200':
+          description: Current operational status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+
+  /metrics/current:
+    get:
+      summary: Current telemetry metric point
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricPoint'
+
+  /metrics/history:
+    get:
+      summary: Telemetry time-series history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MetricPoint'
+
+  /flows:
+    get:
+      summary: Active flow table
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: class
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FlowRecord'
+
+  /capacity:
+    get:
+      summary: Capacity estimate and congestion state
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityEstimate'
+
+  /policies:
+    get:
+      summary: List active QoS policies
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QoSPolicy'
+
+  /policies/preview:
+    post:
+      summary: Preview policy changes without mutating
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyPreview'
+
+  /policies/apply:
+    post:
+      summary: Apply verified policy changes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyEvent'
+
+  /policies/rollback:
+    post:
+      summary: Restore safe baseline policy
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyEvent'
+
+  /intents:
+    get:
+      summary: List temporary user intents
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserIntent'
+    post:
+      summary: Create temporary intent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateIntentRequest'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserIntent'
+
+  /intents/{id}:
+    delete:
+      summary: Cancel temporary intent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelled:
+                    type: boolean
+
+  /events:
+    get:
+      summary: Audit event history
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PolicyEvent'
+
+  /model:
+    get:
+      summary: Model evaluation metadata and provenance
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelEvaluation'
+
+  /experiments:
+    get:
+      summary: List experiment benchmark runs
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExperimentRun'
+
+  /stream:
+    get:
+      summary: Server-Sent Events (SSE) live telemetry stream
+      responses:
+        '200':
+          description: Continuous text/event-stream
+
+components:
+  schemas:
+    ComponentStatus:
+      type: object
+      required: [id, name, state, detail, version, lastChecked]
+      properties:
+        id:
+          type: string
+          enum: [frontend, api, classifier, sdn_controller, enforcement]
+        name:
+          type: string
+        state:
+          type: string
+          enum: [OPERATIONAL, DEGRADED, NOT_CONNECTED, DEMO_SIMULATION, UNKNOWN]
+        detail:
+          type: string
+        version:
+          type: string
+        lastChecked:
+          type: string
+
+    SystemHealthResponse:
+      type: object
+      required: [status, mode, connected, lastUpdated, apiBaseUrl, components]
+      properties:
+        status:
+          type: string
+          example: "ok"
+        mode:
+          type: string
+          enum: [LIVE, DEMO]
+        connected:
+          type: boolean
+        lastUpdated:
+          type: string
+        apiBaseUrl:
+          type: string
+        latencyMs:
+          type: integer
+          nullable: true
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComponentStatus'
+
+    SystemStatus:
+      type: object
+      properties:
+        mode:
+          type: string
+        stateVersion:
+          type: string
+        activeScenario:
+          type: string
+        provenance:
+          type: string
+
+    MetricPoint:
+      type: object
+      required: [timestamp, elapsedSec, estimatedCapacityMbps, configuredShapingMbps, throughputMbps, medianLatencyMs, p95LatencyMs, p99LatencyMs, jitterMs, queueDelayMs, queueDepthPct, packetLossPct, utilizationPct, activeFlows, classThroughputMbps, provenance]
+      properties:
+        timestamp:
+          type: string
+        elapsedSec:
+          type: integer
+        estimatedCapacityMbps:
+          type: number
+        configuredShapingMbps:
+          type: number
+        throughputMbps:
+          type: number
+        medianLatencyMs:
+          type: number
+        p95LatencyMs:
+          type: number
+        p99LatencyMs:
+          type: number
+        jitterMs:
+          type: number
+        queueDelayMs:
+          type: number
+        queueDepthPct:
+          type: number
+        packetLossPct:
+          type: number
+        utilizationPct:
+          type: number
+        activeFlows:
+          type: integer
+        classThroughputMbps:
+          type: object
+          additionalProperties:
+            type: number
+        provenance:
+          type: string
+
+    FlowRecord:
+      type: object
+      required: [id, sourceEndpoint, destinationEndpoint, clientHostname, protocol, currentRateMbps, bytesTransferred, packetsTransferred, predictedClass, confidence, isLowConfidence, policyClass, dscpMark, rttMs, jitterMs, status, lastSeen, modelVersion, provenance, rateHistoryMbps, features]
+      properties:
+        id:
+          type: string
+        sourceEndpoint:
+          type: string
+        destinationEndpoint:
+          type: string
+        clientHostname:
+          type: string
+        protocol:
+          type: string
+        currentRateMbps:
+          type: number
+        bytesTransferred:
+          type: integer
+        packetsTransferred:
+          type: integer
+        predictedClass:
+          type: string
+        confidence:
+          type: number
+        isLowConfidence:
+          type: boolean
+        policyClass:
+          type: string
+        dscpMark:
+          type: string
+        rttMs:
+          type: number
+        jitterMs:
+          type: number
+        status:
+          type: string
+        lastSeen:
+          type: string
+        modelVersion:
+          type: string
+        provenance:
+          type: string
+        rateHistoryMbps:
+          type: array
+          items:
+            type: number
+        features:
+          type: array
+          items:
+            type: object
+
+    CapacityEstimate:
+      type: object
+      required: [timestamp, estimatedWanMbps, configuredShapingMbps, observedThroughputMbps, headroomReservePct, congestionState, lastAdaptationReason, provenance]
+      properties:
+        timestamp:
+          type: string
+        estimatedWanMbps:
+          type: number
+        configuredShapingMbps:
+          type: number
+        observedThroughputMbps:
+          type: number
+        headroomReservePct:
+          type: number
+        confidencePct:
+          type: number
+          nullable: true
+        errorBoundMbps:
+          type: number
+          nullable: true
+        congestionState:
+          type: string
+        lastAdaptationReason:
+          type: string
+        provenance:
+          type: string
+
+    QoSPolicy:
+      type: object
+      required: [id, trafficClass, priorityTier, minSharePct, maxRateMbps, targetLatencyMs, queueDiscipline, enabled, lastChanged, provenance]
+      properties:
+        id:
+          type: string
+        trafficClass:
+          type: string
+        priorityTier:
+          type: integer
+        minSharePct:
+          type: number
+        maxRateMbps:
+          type: number
+        targetLatencyMs:
+          type: integer
+        queueDiscipline:
+          type: string
+        enabled:
+          type: boolean
+        lastChanged:
+          type: string
+        provenance:
+          type: string
+
+    UserIntent:
+      type: object
+      required: [id, name, trafficClass, priorityTier, targetLatencyMs, durationMinutes, remainingSeconds, status, rationale, createdAt, provenance]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        trafficClass:
+          type: string
+        priorityTier:
+          type: integer
+        minFloorMbps:
+          type: number
+          nullable: true
+        maxCeilingMbps:
+          type: number
+          nullable: true
+        targetLatencyMs:
+          type: integer
+        durationMinutes:
+          type: integer
+        remainingSeconds:
+          type: integer
+        status:
+          type: string
+        rationale:
+          type: string
+        createdAt:
+          type: string
+        provenance:
+          type: string
+
+    CreateIntentRequest:
+      type: object
+      required: [name, trafficClass, durationMinutes]
+      properties:
+        name:
+          type: string
+        trafficClass:
+          type: string
+        durationMinutes:
+          type: integer
+        priorityTier:
+          type: integer
+          default: 1
+        minFloorMbps:
+          type: number
+        maxCeilingMbps:
+          type: number
+        targetLatencyMs:
+          type: integer
+          default: 50
+        rationale:
+          type: string
+
+    PolicyPreview:
+      type: object
+      required: [previewId, createdAt, stateVersion, proposedChanges, constraintsChecked, warnings, requiresConfirmation]
+      properties:
+        previewId:
+          type: string
+        createdAt:
+          type: string
+        stateVersion:
+          type: string
+        proposedChanges:
+          type: array
+          items:
+            type: object
+        constraintsChecked:
+          type: object
+        warnings:
+          type: array
+          items:
+            type: string
+        requiresConfirmation:
+          type: boolean
+
+    PolicyEvent:
+      type: object
+      required: [id, timestamp, stepIndex, decision, reason, policyEffect, outcome, severity, provenance]
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: string
+        stepIndex:
+          type: integer
+        decision:
+          type: string
+        reason:
+          type: string
+        policyEffect:
+          type: string
+        outcome:
+          type: string
+        severity:
+          type: string
+        provenance:
+          type: string
+
+    ModelEvaluation:
+      type: object
+      required: [modelName, modelVersion, artifactId, featureSchemaVersion, classMappingVersion, quantizationState, datasetName, evaluationDate, sampleCount, overallAccuracy, macroPrecision, macroRecall, macroF1, modelSizeKb, fp32SizeKb, inferenceLatencyP50Us, inferenceLatencyP95Us, inferenceLatencyP99Us, fp32LatencyP50Us, perClassMetrics, confusionMatrix, confidenceDistribution, provenanceNote]
+      properties:
+        modelName:
+          type: string
+        modelVersion:
+          type: string
+        artifactId:
+          type: string
+        featureSchemaVersion:
+          type: string
+        classMappingVersion:
+          type: string
+        quantizationState:
+          type: string
+        datasetName:
+          type: string
+        evaluationDate:
+          type: string
+        sampleCount:
+          type: integer
+        overallAccuracy:
+          type: number
+        macroPrecision:
+          type: number
+        macroRecall:
+          type: number
+        macroF1:
+          type: number
+        modelSizeKb:
+          type: number
+        fp32SizeKb:
+          type: number
+        inferenceLatencyP50Us:
+          type: number
+        inferenceLatencyP95Us:
+          type: number
+        inferenceLatencyP99Us:
+          type: number
+        fp32LatencyP50Us:
+          type: number
+        perClassMetrics:
+          type: array
+          items:
+            type: object
+        confusionMatrix:
+          type: object
+        confidenceDistribution:
+          type: array
+          items:
+            type: object
+        provenanceNote:
+          type: string
+
+    ExperimentRun:
+      type: object
+      required: [id, profileId, profileName, description, isSimulatedBaseline, status, startTime, endTime, config, metrics, provenanceNote]
+      properties:
+        id:
+          type: string
+        profileId:
+          type: string
+        profileName:
+          type: string
+        description:
+          type: string
+        isSimulatedBaseline:
+          type: boolean
+        status:
+          type: string
+        startTime:
+          type: string
+        endTime:
+          type: string
+        config:
+          type: object
+        metrics:
+          type: object
+        provenanceNote:
+          type: string
