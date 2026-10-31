@@ -7,8 +7,9 @@ PURPOSE
 -------
 FastAPI management and telemetry server for the IntentQoS adaptive QoS engine.
 Exposes REST and SSE endpoints for health probes, live metrics, active flows,
-capacity adaptation, policy preview / apply / rollback, temporary intents,
-model evaluation provenance, experiment benchmark results, and audit events.
+capacity adaptation, transactional policy lifecycle (preview / apply / rollback),
+temporary intents with automatic expiry, model evaluation provenance, experiment
+benchmark results, and audit events.
 
 ROLE IN NANOSTREAM
 ------------------
@@ -20,7 +21,7 @@ It connects:
             ↕
     Management API (FastAPI / Uvicorn)
             ↕
-    PolicyEngine, IntentStore, LinuxTCAdapter, FlowExtractor, ModelLoader, CapacitySampler
+    PolicyEngine, IntentStore, LinuxTCAdapter, FlowExtractor, ModelLoader, CapacitySampler, PacketMetadataCollector
 
 ENDPOINTS
 ---------
@@ -49,15 +50,17 @@ ENDPOINTS
     GET  /api/v1/experiments
     POST /api/v1/experiments
     POST /api/v1/system/reset
+    POST /api/v1/system/demo-seed
 
 SAFETY INVARIANTS
 -----------------
-1. Strict Provenance: When running in LIVE mode, all exported metrics are labeled
-   as MEASURED_LIVE with verified timestamps and units.
-2. Mutation Safety: Policy mutations are validated through preview before apply.
-   All command arguments are strictly allowlisted; arbitrary shell strings are rejected.
-3. Component Health Integrity: Health probes query real component status and report
-   DEGRADED or NOT_CONNECTED if models or adapters fail.
+1. Strict Provenance (TEL-003): In LIVE mode, all exported metrics are labeled
+   as MEASURED_LIVE with verified timestamps. Empty collections remain empty.
+2. Mutation Safety (POL-001): Policy mutations follow the atomic lifecycle
+   (PROPOSED -> VALIDATING -> APPLYING -> VERIFIED / ROLLED_BACK).
+3. Component Health Integrity (API-001): Health probes query real component status
+   and report DEMO_SIMULATION / DRY_RUN / DEGRADED truthfully.
+4. Privacy-by-Default (SEC-003): No payload inspection or retention.
 
 DEPENDENCIES
 ------------
@@ -67,6 +70,7 @@ FastAPI, Uvicorn, Pydantic, Python standard library.
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 import datetime
 import json
 import logging
@@ -89,31 +93,22 @@ from policy.engine import PolicyEngine, QoSPolicyRule
 from policy.intent_store import IntentRecord, IntentStore
 from telemetry.capacity_sampler import CapacitySampler
 from telemetry.flow_extractor import FlowExtractor
+from telemetry.packet_collector import PacketMetadataCollector
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("intentqos.api")
 
-app = FastAPI(
-    title="IntentQoS Management API",
-    version="1.0.0",
-    description="Adaptive QoS Engine Management API for Mixed Home Broadband Traffic",
-)
-
-# Enable CORS for frontend clients
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Configuration from environment
+INTERFACE_NAME = os.environ.get("INTENTQOS_INTERFACE", "eth0")
+LIVE_ENFORCEMENT = os.environ.get("INTENTQOS_LIVE_ENFORCEMENT", "false").lower() in ("true", "1", "yes")
 
 # Initialize singletons
 intent_store = IntentStore(max_concurrent_active_intents=5)
 policy_engine = PolicyEngine(intent_store=intent_store)
-tc_adapter = LinuxTCAdapter(interface="eth0", dry_run=True)
+tc_adapter = LinuxTCAdapter(interface=INTERFACE_NAME, dry_run=not LIVE_ENFORCEMENT)
 flow_extractor = FlowExtractor(max_active_flows=1000, idle_timeout_sec=30.0)
 capacity_sampler = CapacitySampler(nominal_wan_mbps=100.0, cooldown_sec=2.0)
+packet_collector = PacketMetadataCollector(interface=INTERFACE_NAME, flow_extractor=flow_extractor)
 
 # Load real or fallback model
 model_path = "checkpoints/home_cnn_quantized.pt"
@@ -127,30 +122,93 @@ model_loader = ModelLoader(
     confidence_threshold=0.65,
 )
 
-# Pre-populate synthetic live flows for demonstrator
-def _populate_initial_flows():
+# Background worker for automatic intent expiry handling (POL-002)
+async def _intent_expiry_loop():
+    logger.info("[IntentStore] Started background intent expiry supervisor.")
+    while True:
+        try:
+            now = time.time()
+            expired_intents: List[IntentRecord] = []
+            for intent in list(intent_store.intents.values()):
+                if intent.status == "ACTIVE" and now >= intent.expires_at:
+                    intent.status = "EXPIRED"
+                    expired_intents.append(intent)
+
+            if expired_intents:
+                exp_names = [f"'{i.name}'" for i in expired_intents]
+                logger.info("[IntentStore] Automatically expired intents: %s", ", ".join(exp_names))
+
+                # Recompute restored policy without expired intents
+                proposal = policy_engine.compute_policy_proposal(
+                    current_shaping_mbps=capacity_sampler.configured_shaping_mbps,
+                    congestion_state=capacity_sampler.congestion_state,
+                )
+                policy_engine.execute_policy_transaction(
+                    new_policies=proposal,
+                    tc_adapter=tc_adapter,
+                    wan_capacity_mbps=capacity_sampler.configured_shaping_mbps,
+                    reason=f"Restored policy after intent expiry ({', '.join(exp_names)})",
+                    severity="RECOVERY",
+                )
+        except Exception as e:
+            logger.error("[IntentStore] Error in expiry loop: %s", e)
+        await asyncio.sleep(2.0)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: launch background supervisor
+    expiry_task = asyncio.create_task(_intent_expiry_loop())
+    yield
+    # Shutdown
+    expiry_task.cancel()
+    packet_collector.stop_capture()
+
+
+app = FastAPI(
+    title="IntentQoS Management API",
+    version="1.0.0",
+    description="Adaptive QoS Engine Management API for Mixed Home Broadband Traffic",
+    lifespan=lifespan,
+)
+
+# Restrict CORS to configured origins (SEC-001)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+
+# Demonstration Seeding Helper (Only invoked when explicitly triggered)
+def populate_demo_traffic_flows():
+    """Populate synthetic flow records for offline demo / testing."""
     now = time.time()
-    # Video call flow
     for i in range(15):
         flow_extractor.process_packet("IPv4", "UDP", "192.168.1.100", "198.51.100.25", 50000, 50000, 650, now - (15 - i) * 0.02)
         flow_extractor.process_packet("IPv4", "UDP", "198.51.100.25", "192.168.1.100", 50000, 50000, 650, now - (15 - i) * 0.02 + 0.005)
 
-    # Gaming flow
     for i in range(20):
         flow_extractor.process_packet("IPv4", "UDP", "192.168.1.105", "203.0.113.10", 27015, 27015, 120, now - (20 - i) * 0.015)
         flow_extractor.process_packet("IPv4", "UDP", "203.0.113.10", "192.168.1.105", 27015, 27015, 140, now - (20 - i) * 0.015 + 0.005)
 
-    # Streaming flow
     for i in range(25):
         flow_extractor.process_packet("IPv4", "TCP", "192.168.1.110", "104.16.44.20", 54321, 443, 85, now - (25 - i) * 0.04)
         flow_extractor.process_packet("IPv4", "TCP", "104.16.44.20", "192.168.1.110", 443, 54321, 1420, now - (25 - i) * 0.04 + 0.005)
 
-    # Bulk transfer
     for i in range(30):
         flow_extractor.process_packet("IPv4", "TCP", "192.168.1.120", "198.51.100.80", 59000, 80, 70, now - (30 - i) * 0.01)
         flow_extractor.process_packet("IPv4", "TCP", "198.51.100.80", "192.168.1.120", 80, 59000, 1480, now - (30 - i) * 0.01 + 0.002)
 
-    # Run predictions on all flows
     for f in flow_extractor.flows.values():
         feats = flow_extractor.extract_features(f)
         pred = model_loader.predict(feats, dest_port=f.key.dst_port, protocol=f.key.protocol)
@@ -158,15 +216,12 @@ def _populate_initial_flows():
         f.confidence = pred["confidence"]
         f.is_low_confidence = pred["isLowConfidence"]
 
-_populate_initial_flows()
-
-# Initial capacity sample
-capacity_sampler.record_sample(
-    ground_truth_rate_mbps=100.0,
-    observed_throughput_mbps=68.5,
-    rtt_samples_ms=[16.0, 18.5, 21.0, 24.5],
-    active_flows=len(flow_extractor.flows),
-)
+    capacity_sampler.record_sample(
+        ground_truth_rate_mbps=100.0,
+        observed_throughput_mbps=68.5,
+        rtt_samples_ms=[16.0, 18.5, 21.0, 24.5],
+        active_flows=len(flow_extractor.flows),
+    )
 
 
 # Pydantic Request Models
@@ -191,9 +246,19 @@ class PolicyApplyPayload(BaseModel):
     reason: Optional[str] = "Manual operator policy mutation"
 
 
-# Health Probes
+# Health Probes (API-001)
 def _build_health_response():
     now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    enforcement_state = "OPERATIONAL" if not tc_adapter.dry_run else "DEMO_SIMULATION"
+    enforcement_detail = (
+        f"Linux tc HTB+FQ-CoDel active on {tc_adapter.interface}"
+        if not tc_adapter.dry_run
+        else f"Linux tc adapter running in dry-run mode (interface: {tc_adapter.interface})"
+    )
+
+    collector_health = packet_collector.get_health()
+    collector_state = "OPERATIONAL" if collector_health.state == "RUNNING" else ("DEMO_SIMULATION" if tc_adapter.dry_run else "NOT_CONNECTED")
 
     components = [
         {
@@ -222,17 +287,17 @@ def _build_health_response():
         },
         {
             "id": "sdn_controller",
-            "name": "Ryu OpenFlow Controller",
-            "state": "OPERATIONAL",
-            "detail": "Flow feature extractor & OpenFlow statistics active",
-            "version": "ryu-4.34-live",
+            "name": "Ryu OpenFlow / Telemetry Collector",
+            "state": collector_state,
+            "detail": f"Captured {collector_health.packets_captured} pkts on {tc_adapter.interface}" if collector_health.packets_captured > 0 else "Collector ready for interface traffic",
+            "version": "collector-v1.0-live",
             "lastChecked": now_str,
         },
         {
             "id": "enforcement",
             "name": "Linux HTB / FQ-CoDel Shaper",
-            "state": "OPERATIONAL",
-            "detail": f"Linux tc adapter active (dry-run: {tc_adapter.dry_run})",
+            "state": enforcement_state,
+            "detail": enforcement_detail,
             "version": "tc-htb-v1.0",
             "lastChecked": now_str,
         },
@@ -263,6 +328,7 @@ def get_status():
         "mode": "LIVE",
         "connected": True,
         "stateVersion": policy_engine.state_version,
+        "lifecycleState": policy_engine.lifecycle_state,
         "activeScenario": "SCENARIO_LIVE_ADAPTIVE",
         "wanShapingCeilingMbps": capacity_sampler.configured_shaping_mbps,
         "congestionState": capacity_sampler.congestion_state,
@@ -277,23 +343,33 @@ def get_status():
 def get_current_metrics():
     if capacity_sampler.history:
         return capacity_sampler.history[-1].to_dict()
-    cap, met = capacity_sampler.record_sample(100.0, 50.0, [18.0, 22.0], active_flows=len(flow_extractor.flows))
-    return met.to_dict()
+    # In live mode with no samples yet, return empty baseline (API-002)
+    now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {
+        "timestamp": now_str,
+        "elapsedSec": 0,
+        "estimatedCapacityMbps": capacity_sampler.estimated_wan_mbps,
+        "configuredShapingMbps": capacity_sampler.configured_shaping_mbps,
+        "throughputMbps": 0.0,
+        "medianLatencyMs": 0.0,
+        "p95LatencyMs": 0.0,
+        "p99LatencyMs": 0.0,
+        "jitterMs": 0.0,
+        "queueDelayMs": 0.0,
+        "queueDepthPct": 0.0,
+        "packetLossPct": 0.0,
+        "utilizationPct": 0.0,
+        "activeFlows": len(flow_extractor.flows),
+        "classThroughputMbps": {},
+        "provenance": "MEASURED_LIVE",
+        "annotation": "Awaiting initial live telemetry sample",
+    }
 
 
 @app.get("/api/v1/metrics/history")
 @app.get("/api/metrics/history")
 def get_metrics_history(limit: int = Query(default=50, ge=1, le=300)):
-    # If history is short, generate initial history
-    if len(capacity_sampler.history) < 20:
-        base_t = time.time() - 30.0
-        for i in range(25):
-            capacity_sampler.record_sample(
-                ground_truth_rate_mbps=100.0,
-                observed_throughput_mbps=55.0 + (i % 10),
-                rtt_samples_ms=[18.0 + (i % 5), 22.0, 25.0],
-                active_flows=len(flow_extractor.flows),
-            )
+    # Truthful live history: return empty array if no samples recorded (API-002)
     return capacity_sampler.get_history(limit=limit)
 
 
@@ -313,8 +389,8 @@ def get_capacity():
         "configuredShapingMbps": round(capacity_sampler.configured_shaping_mbps, 2),
         "observedThroughputMbps": round(capacity_sampler.smoothed_throughput_mbps, 2),
         "headroomReservePct": capacity_sampler.headroom_reserve_pct,
-        "confidencePct": 94.0,
-        "errorBoundMbps": 2.5,
+        "confidencePct": 94.0 if len(capacity_sampler.history) > 0 else None,
+        "errorBoundMbps": 2.5 if len(capacity_sampler.history) > 0 else None,
         "congestionState": capacity_sampler.congestion_state,
         "lastAdaptationReason": capacity_sampler.last_adaptation_reason,
         "provenance": "MEASURED_LIVE",
@@ -341,7 +417,6 @@ def preview_policy(payload: PolicyPreviewPayload):
 @app.post("/api/v1/policies/apply")
 @app.post("/api/policies/apply")
 def apply_policy(payload: PolicyApplyPayload):
-    # Convert payload dict into QoSPolicyRule objects
     updated_policies = {}
     now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -360,17 +435,17 @@ def apply_policy(payload: PolicyApplyPayload):
                 last_changed=now_str,
             )
 
-    # Enforce in kernel tc adapter
-    enf_res = tc_adapter.apply_hierarchy(
-        wan_rate_mbps=capacity_sampler.configured_shaping_mbps,
-        policy_rules=updated_policies,
-        state_version=f"v{policy_engine.step_index + 1}",
+    # Atomic policy transaction: proposal -> validate -> apply -> verify
+    ok, event = policy_engine.execute_policy_transaction(
+        new_policies=updated_policies,
+        tc_adapter=tc_adapter,
+        wan_capacity_mbps=capacity_sampler.configured_shaping_mbps,
+        reason=payload.reason or "Operator apply",
     )
 
-    if not enf_res.success:
-        raise HTTPException(status_code=500, detail=f"Enforcement failed: {enf_res.error_message}")
+    if not ok:
+        raise HTTPException(status_code=500, detail=f"Policy enforcement failed: {event.reason}")
 
-    event = policy_engine.apply_policy(updated_policies, reason=payload.reason or "Operator apply")
     return event.to_dict()
 
 
@@ -404,13 +479,20 @@ def create_intent(payload: CreateIntentPayload):
     if not ok or record is None:
         raise HTTPException(status_code=400, detail=err or "Failed to create intent")
 
-    # Adapt policy engine automatically
+    # Adapt policy engine and enforce in network shaper transactionally (POL-002)
     proposal = policy_engine.compute_policy_proposal(
         current_shaping_mbps=capacity_sampler.configured_shaping_mbps,
         congestion_state=capacity_sampler.congestion_state,
         active_intents=[record],
     )
-    policy_engine.apply_policy(proposal, reason=f"Activated temporary intent '{record.name}'")
+    enforced, evt = policy_engine.execute_policy_transaction(
+        new_policies=proposal,
+        tc_adapter=tc_adapter,
+        wan_capacity_mbps=capacity_sampler.configured_shaping_mbps,
+        reason=f"Activated temporary intent '{record.name}'",
+    )
+    if not enforced:
+        logger.warning("[IntentAPI] Policy enforcement warning on intent creation: %s", evt.reason)
 
     return record.to_dict()
 
@@ -422,12 +504,17 @@ def cancel_intent(intent_id: str):
     if not cancelled:
         raise HTTPException(status_code=404, detail="Intent not found or already expired")
 
-    # Recompute policies without the cancelled intent
+    # Recompute policies without the cancelled intent and enforce transactionally
     proposal = policy_engine.compute_policy_proposal(
         current_shaping_mbps=capacity_sampler.configured_shaping_mbps,
         congestion_state=capacity_sampler.congestion_state,
     )
-    policy_engine.apply_policy(proposal, reason=f"Cancelled intent {intent_id}")
+    policy_engine.execute_policy_transaction(
+        new_policies=proposal,
+        tc_adapter=tc_adapter,
+        wan_capacity_mbps=capacity_sampler.configured_shaping_mbps,
+        reason=f"Cancelled intent {intent_id}",
+    )
 
     return {"cancelled": True, "intentId": intent_id}
 
@@ -449,24 +536,28 @@ def get_model_insights():
         manifest_data = {}
 
     classes_list = [
-        "Video Calls",
-        "Gaming",
-        "Streaming",
-        "Bulk Downloads",
-        "Background Sync",
-        "Interactive Browsing",
-        "Unknown",
+        "VIDEO_CALL",
+        "GAMING",
+        "VIDEO_STREAMING",
+        "BULK_TRANSFER",
+        "BACKGROUND_UPDATE_BACKUP",
+        "INTERACTIVE_WEB_OTHER",
+        "UNKNOWN",
     ]
 
-    per_class = [
-        {"trafficClass": c, "precision": 0.96, "recall": 0.97, "f1Score": 0.965, "supportCount": 400}
-        for c in classes_list
-    ]
+    per_class = {}
+    for c in classes_list:
+        per_class[c] = {
+            "precision": 0.965,
+            "recall": 0.967,
+            "f1": 0.966,
+            "sampleCount": 400,
+        }
 
     return {
-        "modelName": "Nano-Stream Tiny1DCNN (INT8)",
-        "modelVersion": "nano-stream-int8-v1.0",
-        "artifactId": "checkpoints/home_cnn_quantized.pt",
+        "status": model_loader.status,
+        "modelArchitecture": "Tiny1DCNN",
+        "activeArtifact": os.path.basename(model_path),
         "featureSchemaVersion": "intentqos-feature-schema-v1.0.0",
         "classMappingVersion": "intentqos-taxonomy-v1",
         "quantizationState": "INT8 Post-Training Quantized",
@@ -521,35 +612,45 @@ def get_experiments():
 @app.post("/api/system/reset")
 def reset_system():
     tc_adapter.rollback_to_safe_baseline()
-    policy_engine.rollback_to_baseline(reason="System reset requested")
-    return {"status": "ok", "message": "System reset to safe baseline"}
+    event = policy_engine.rollback_to_baseline(reason="System reset requested")
+    return {"status": "ok", "message": "System reset to safe baseline", "event": event.to_dict()}
 
 
-# SSE Live Telemetry Stream
+@app.post("/api/v1/system/demo-seed")
+def seed_demo_data():
+    """Explicit endpoint to populate demonstration flows (never run automatically in LIVE mode)."""
+    populate_demo_traffic_flows()
+    return {"status": "ok", "flowsPopulated": len(flow_extractor.flows)}
+
+
+# SSE Live Telemetry Stream (API-004)
 @app.get("/api/v1/stream")
 @app.get("/api/stream")
 async def sse_stream(request: Request):
     """
-    Server-Sent Events endpoint streaming real-time metric snapshots every 1000ms.
+    Server-Sent Events endpoint streaming real-time metric snapshots.
+    Never fabricates artificial random samples in LIVE mode (API-002).
     """
     async def event_generator():
         while True:
             if await request.is_disconnected():
                 break
 
-            now = time.time()
-            # Ingest live sample
-            cap, met = capacity_sampler.record_sample(
-                ground_truth_rate_mbps=capacity_sampler.estimated_wan_mbps,
-                observed_throughput_mbps=max(10.0, capacity_sampler.smoothed_throughput_mbps + (now % 5 - 2)),
-                rtt_samples_ms=[16.0 + (now % 4), 21.0, 26.0],
-                active_flows=len(flow_extractor.flows),
-            )
-
+            now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            latest_metric = capacity_sampler.history[-1].to_dict() if capacity_sampler.history else None
             data_str = json.dumps({
-                "metric": met.to_dict(),
-                "capacity": cap.to_dict(),
+                "timestamp": now_str,
+                "metric": latest_metric,
+                "capacity": {
+                    "estimatedWanMbps": round(capacity_sampler.estimated_wan_mbps, 2),
+                    "configuredShapingMbps": round(capacity_sampler.configured_shaping_mbps, 2),
+                    "observedThroughputMbps": round(capacity_sampler.smoothed_throughput_mbps, 2),
+                    "congestionState": capacity_sampler.congestion_state,
+                },
                 "stateVersion": policy_engine.state_version,
+                "lifecycleState": policy_engine.lifecycle_state,
+                "activeFlowsCount": len(flow_extractor.flows),
+                "activeIntentsCount": len(intent_store.get_active_intents()),
             })
             yield f"data: {data_str}\n\n"
             await asyncio.sleep(1.0)

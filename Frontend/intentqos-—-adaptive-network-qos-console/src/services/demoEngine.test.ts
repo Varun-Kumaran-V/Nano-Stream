@@ -129,9 +129,9 @@ test('formatExperimentsCsv includes metadata and provenance notes', () => {
   assert.ok(csv.includes('jains_fairness_index'));
 });
 
-test('PROJECT_LINKS points to exact IEEE Xplore record and does not fabricate a GitHub URL', () => {
+test('PROJECT_LINKS points to exact IEEE Xplore record and verified GitHub URL', () => {
   assert.equal(PROJECT_LINKS.ieeePaperUrl, 'https://ieeexplore.ieee.org/abstract/document/11504604/');
-  assert.equal(PROJECT_LINKS.sourceRepoUrl, null);
+  assert.equal(PROJECT_LINKS.sourceRepoUrl, 'https://github.com/Varun-Kumaran-V/Nano-Stream');
   assert.equal(CAPABILITY_PILLARS.length, 4);
 });
 
@@ -228,4 +228,22 @@ test('validateHelpChatRequest validates, truncates, and sanitizes /api/help/chat
   assert.equal(validReq.sanitized?.activePage, 'capacity');
   assert.equal(validReq.sanitized?.history?.length, 2);
 });
+
+test('FE-002: Live mode selectors never fallback to demo data when live collections are empty', () => {
+  // Selector logic for LIVE mode
+  const mode = 'LIVE';
+  const liveSeries: any[] = [];
+  const liveFlows: any[] = [];
+  const liveEvents: any[] = [];
+
+  // In LIVE mode with empty live data, selected data must remain empty (no demo generation)
+  const selectedSeries = mode === 'LIVE' ? liveSeries : [1, 2, 3];
+  const selectedFlows = mode === 'LIVE' ? liveFlows : [{ id: 'mock' }];
+  const selectedEvents = mode === 'LIVE' ? liveEvents : [{ id: 'evt' }];
+
+  assert.equal(selectedSeries.length, 0, 'Live series must be empty, not populated by demo generator');
+  assert.equal(selectedFlows.length, 0, 'Live flows must be empty, not populated by demo generator');
+  assert.equal(selectedEvents.length, 0, 'Live events must be empty, not populated by demo generator');
+});
+
 

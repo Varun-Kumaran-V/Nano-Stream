@@ -388,12 +388,12 @@ export default function App() {
           ApiClient.getEvents(),
         ]);
         if (!active) return;
-        if (hist && hist.length > 0) setLiveSeries(hist);
-        if (fl && fl.length > 0) setLiveFlows(fl);
+        if (Array.isArray(hist)) setLiveSeries(hist);
+        if (Array.isArray(fl)) setLiveFlows(fl);
         if (cap) setLiveCapacity(cap);
-        if (pols && pols.length > 0) setLivePolicies(pols);
-        if (ints) setLiveIntents(ints);
-        if (evts && evts.length > 0) setLiveEvents(evts);
+        if (Array.isArray(pols)) setLivePolicies(pols);
+        if (Array.isArray(ints)) setLiveIntents(ints);
+        if (Array.isArray(evts)) setLiveEvents(evts);
       } catch (err) {
         // Silently handled to avoid UI jitter
       }
@@ -407,33 +407,120 @@ export default function App() {
     };
   }, [appView, mode, liveHealth?.connected, pollingIntervalMs]);
 
-  // Compute time-series and current state (live or demo)
-  const series = useMemo(
-    () => (mode === 'LIVE' && liveSeries.length > 0 ? liveSeries : generateTimeSeries(scenarioId, tick, 48, policies, intents)),
-    [mode, liveSeries, scenarioId, tick, policies, intents]
+  // Safe fallback metric point for LIVE mode when telemetry history has not yet arrived
+  const emptyLiveMetricPoint: MetricPoint = useMemo(
+    () => ({
+      timestamp: new Date().toISOString().substring(11, 19),
+      elapsedSec: 0,
+      estimatedCapacityMbps: liveCapacity?.estimatedWanMbps || 0,
+      configuredShapingMbps: liveCapacity?.configuredShapingMbps || 0,
+      throughputMbps: liveCapacity?.observedThroughputMbps || 0,
+      medianLatencyMs: 0,
+      p95LatencyMs: 0,
+      p99LatencyMs: 0,
+      jitterMs: 0,
+      queueDelayMs: 0,
+      queueDepthPct: 0,
+      packetLossPct: 0,
+      utilizationPct: 0,
+      activeFlowCount: liveFlows.length,
+      activeFlows: liveFlows.length,
+      classThroughputMbps: {
+        'Video Calls': 0,
+        'Gaming': 0,
+        'Interactive Browsing': 0,
+        'Streaming': 0,
+        'Bulk Downloads': 0,
+        'Background Sync': 0,
+        'Unknown': 0,
+      },
+      provenance: 'MEASURED_LIVE' as const,
+    }),
+    [liveCapacity, liveFlows.length]
   );
 
-  const currentPoint = series[series.length - 1];
-  const flows = useMemo(() => (mode === 'LIVE' && liveFlows.length > 0 ? liveFlows : generateFlowsForPoint(currentPoint)), [mode, liveFlows, currentPoint]);
-  const events = useMemo(() => (mode === 'LIVE' && liveEvents.length > 0 ? liveEvents : generatePolicyEvents(scenarioId, tick)), [mode, liveEvents, scenarioId, tick]);
-  const capacityEstimate = useMemo(
-    () => (mode === 'LIVE' && liveCapacity ? liveCapacity : deriveCapacityEstimate(currentPoint, scenarioId)),
-    [mode, liveCapacity, currentPoint, scenarioId]
-  );
+  // Compute time-series and current state strictly by mode (FE-002: no LIVE-to-DEMO fallback)
+  const series = useMemo(() => {
+    if (mode === 'LIVE') {
+      return liveSeries;
+    }
+    return generateTimeSeries(scenarioId, tick, 48, policies, intents);
+  }, [mode, liveSeries, scenarioId, tick, policies, intents]);
 
-  const activePolicies = useMemo(
-    () => (mode === 'LIVE' && livePolicies.length > 0 ? livePolicies : policies),
-    [mode, livePolicies, policies]
-  );
+  const currentPoint = useMemo(() => {
+    if (mode === 'LIVE') {
+      return series.length > 0 ? series[series.length - 1] : emptyLiveMetricPoint;
+    }
+    return series[series.length - 1];
+  }, [mode, series, emptyLiveMetricPoint]);
 
-  const activeIntents = useMemo(
-    () => (mode === 'LIVE' && liveIntents.length > 0 ? liveIntents : intents),
-    [mode, liveIntents, intents]
-  );
+  const flows = useMemo(() => {
+    if (mode === 'LIVE') {
+      return liveFlows;
+    }
+    return generateFlowsForPoint(currentPoint);
+  }, [mode, liveFlows, currentPoint]);
+
+  const events = useMemo(() => {
+    if (mode === 'LIVE') {
+      return liveEvents;
+    }
+    return generatePolicyEvents(scenarioId, tick);
+  }, [mode, liveEvents, scenarioId, tick]);
+
+  const capacityEstimate = useMemo(() => {
+    if (mode === 'LIVE') {
+      if (liveCapacity) return liveCapacity;
+      return {
+        timestamp: `${currentPoint.timestamp} UTC`,
+        estimatedWanMbps: 0,
+        configuredShapingMbps: 0,
+        observedThroughputMbps: 0,
+        headroomReservePct: 5,
+        confidencePct: null,
+        errorBoundMbps: null,
+        congestionState: 'NOMINAL' as const,
+        lastAdaptationReason: liveHealth?.connected ? 'Awaiting live measurements' : 'Live API disconnected',
+        provenance: 'MEASURED_LIVE' as const,
+      };
+    }
+    return deriveCapacityEstimate(currentPoint, scenarioId);
+  }, [mode, liveCapacity, currentPoint, scenarioId, liveHealth?.connected]);
+
+  const activePolicies = useMemo(() => {
+    if (mode === 'LIVE') {
+      return livePolicies.length > 0 ? livePolicies : policies;
+    }
+    return policies;
+  }, [mode, livePolicies, policies]);
+
+  const activeIntents = useMemo(() => {
+    if (mode === 'LIVE') {
+      return liveIntents;
+    }
+    return intents;
+  }, [mode, liveIntents, intents]);
 
   const systemHealth: SystemHealth = useMemo(() => {
     if (mode === 'LIVE') {
-      return liveHealth || getDemoSystemHealth(`${currentPoint.timestamp} UTC`);
+      if (liveHealth) return liveHealth;
+      return {
+        mode: 'LIVE' as const,
+        connected: false,
+        lastUpdated: `${currentPoint.timestamp} UTC`,
+        apiBaseUrl: 'http://localhost:8080/api',
+        latencyMs: 0,
+        components: [
+          {
+            id: 'api' as const,
+            name: 'Telemetry & Policy REST API',
+            state: 'NOT_CONNECTED' as const,
+            detail: 'Unable to reach backend at http://localhost:8080/api',
+            version: 'offline',
+            lastChecked: `${currentPoint.timestamp} UTC`,
+          },
+        ],
+      };
     }
     return getDemoSystemHealth(`${currentPoint.timestamp} UTC`);
   }, [mode, liveHealth, currentPoint.timestamp]);

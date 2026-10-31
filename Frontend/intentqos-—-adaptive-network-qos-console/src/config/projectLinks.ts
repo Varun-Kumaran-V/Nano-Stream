@@ -9,7 +9,7 @@
 export const PROJECT_LINKS = {
   ieeePaperUrl: 'https://ieeexplore.ieee.org/abstract/document/11504604/',
   ieeePaperTitle: 'Nano-Stream Research Paper (IEEE Xplore #11504604)',
-  sourceRepoUrl: null as string | null,
+  sourceRepoUrl: 'https://github.com/Varun-Kumaran-V/Nano-Stream' as string | null,
   sourceRepoFallbackLabel: 'Source code link coming soon',
 } as const;
 

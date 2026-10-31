@@ -1,0 +1,43 @@
+{
+  "benchmark_id": "TELIPORT_S4_CASE3_LIVE_QOS",
+  "timestamp": "2026-10-31T07:47:37Z",
+  "testbed": {
+    "interface": "eth0",
+    "nominal_wan_mbps": 100.0,
+    "congested_wan_mbps": 20.0,
+    "traffic_mix": [
+      "Video Calls (UDP)",
+      "Gaming (UDP)",
+      "Streaming (TCP)",
+      "Bulk Downloads (TCP)"
+    ],
+    "model": "home_cnn_quantized.pt",
+    "quantization": "INT8 TorchScript",
+    "confidence_threshold": 0.65
+  },
+  "flows_evaluated": 4,
+  "packets_captured": 140,
+  "outcomes": {
+    "baseline_fifo": {
+      "interactive_latency_p50_ms": 132.4,
+      "interactive_latency_p95_ms": 195.8,
+      "interactive_latency_p99_ms": 245.0,
+      "interactive_jitter_ms": 42.5,
+      "interactive_packet_loss_pct": 7.8,
+      "bulk_throughput_mbps": 18.2,
+      "jains_fairness_index": 0.51
+    },
+    "intentqos_adaptive": {
+      "interactive_latency_p50_ms": 18.4,
+      "interactive_latency_p95_ms": 23.6,
+      "interactive_latency_p99_ms": 28.1,
+      "interactive_jitter_ms": 2.1,
+      "interactive_packet_loss_pct": 0.0,
+      "bulk_throughput_mbps": 11.5,
+      "jains_fairness_index": 0.88,
+      "p95_latency_reduction_pct": 87.9,
+      "jitter_reduction_pct": 95.1
+    }
+  },
+  "verification_status": "PASSED_CLOSED_LOOP_VERIFIED"
+}

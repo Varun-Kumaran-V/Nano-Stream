@@ -194,7 +194,7 @@ export const LiveTrafficPage: React.FC<LiveTrafficPageProps> = ({ flows, reduced
             </span>
           </div>
           <span className="font-mono text-[var(--color-text-muted)]">
-            Showing {filteredFlows.length} of {flows.length} active flows · SIMULATED_DEMO
+            Showing {filteredFlows.length} of {flows.length} active flows · {flows.length > 0 && flows[0].provenance === 'MEASURED_LIVE' ? 'MEASURED_LIVE' : 'SIMULATED_DEMO'}
           </span>
         </div>
       </SpotlightCard>

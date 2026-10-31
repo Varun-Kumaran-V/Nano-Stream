@@ -314,9 +314,28 @@ class LinuxTCAdapter:
             "state_version": state_version,
         }
 
-        # Read-back verification
+        # Read-back verification against requested policy
         verified = self.read_back_classes()
         verified_class_ids = list(verified.keys())
+
+        if not self.dry_run:
+            verified_ok, missing_or_mismatched = self.verify_classes(class_specs, verified)
+            if not verified_ok:
+                logger.error(
+                    "Kernel read-back verification failed on %s: %s",
+                    self.interface,
+                    missing_or_mismatched,
+                )
+                self.rollback_to_safe_baseline()
+                return EnforcementResult(
+                    success=False,
+                    is_dry_run=False,
+                    state_version=state_version,
+                    commands_executed=executed_cmds_str,
+                    verified_classes=verified_class_ids,
+                    error_message=f"Read-back verification failed: {missing_or_mismatched}",
+                    rollback_applied=True,
+                )
 
         return EnforcementResult(
             success=True,
@@ -325,6 +344,42 @@ class LinuxTCAdapter:
             commands_executed=executed_cmds_str,
             verified_classes=verified_class_ids,
         )
+
+    def verify_classes(
+        self,
+        expected_classes: Dict[str, Dict[str, float]],
+        actual_classes: Optional[Dict[str, TCClassStats]] = None,
+        tolerance_pct: float = 20.0,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Verify that actual kernel read-back classes match expected rates within tolerance.
+        """
+        if actual_classes is None:
+            actual_classes = self.read_back_classes()
+
+        for cid, spec in expected_classes.items():
+            if cid not in actual_classes:
+                return False, f"Missing expected class {cid} in kernel read-back"
+            actual = actual_classes[cid]
+            expected_rate = spec["rate"]
+            delta = abs(actual.rate_mbps - expected_rate)
+            max_allowed = max(0.5, expected_rate * (tolerance_pct / 100.0))
+            if delta > max_allowed:
+                return False, f"Class {cid} rate mismatch: expected ~{expected_rate:.1f}Mbps, got {actual.rate_mbps:.1f}Mbps"
+
+        return True, None
+
+    def reset_interface(self) -> bool:
+        """
+        Remove all root traffic-control queuing disciplines and restore unshaped kernel default.
+        """
+        tc = self.tc_binary or "/sbin/tc"
+        cmd = [tc, "qdisc", "del", "dev", self.interface, "root"]
+        code, _, err = self._execute_command(cmd)
+        if code != 0 and "No such file or directory" not in err and "Cannot find" not in err:
+            logger.warning("Failed to reset interface %s: %s", self.interface, err)
+            return False
+        return True
 
     def rollback_to_safe_baseline(self) -> EnforcementResult:
         """

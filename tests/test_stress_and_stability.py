@@ -74,3 +74,16 @@ def test_capacity_sampler_oscillation_damping():
 
     # Jitter below 5% hysteresis must NOT cause 50 adaptations
     assert sampler.adaptation_count <= 2
+
+
+def test_end_to_end_closed_loop_demonstration_scenario():
+    """Verify complete closed-loop QoS sequence executes cleanly with measurable improvement."""
+    from scripts.demo_live_qos_loop import run_full_live_qos_demonstration
+
+    results = run_full_live_qos_demonstration(output_dir="results")
+    assert results["verification_status"] == "PASSED_CLOSED_LOOP_VERIFIED"
+    assert results["outcomes"]["intentqos_adaptive"]["p95_latency_reduction_pct"] > 80.0
+    assert results["outcomes"]["intentqos_adaptive"]["jitter_reduction_pct"] > 90.0
+    assert results["outcomes"]["intentqos_adaptive"]["interactive_packet_loss_pct"] == 0.0
+    assert results["outcomes"]["intentqos_adaptive"]["jains_fairness_index"] >= 0.85
+

@@ -88,3 +88,52 @@ def test_policy_rollback():
     evt = engine.rollback_to_baseline(reason="Emergency test rollback")
     assert evt.decision == "ROLLBACK_SAFE_BASELINE"
     assert "safe-baseline" in engine.state_version
+
+
+def test_policy_transaction_lifecycle_and_fairness():
+    """Verify atomic policy lifecycle and Jain's fairness calculation."""
+    from enforcement.tc_adapter import LinuxTCAdapter
+    from policy.engine import QoSPolicyRule
+
+    engine = PolicyEngine()
+    adapter = LinuxTCAdapter(interface="eth0", dry_run=True)
+
+    # 1. Jain's fairness index
+    equal_jfi = engine.compute_jains_fairness_index([20.0, 20.0, 20.0, 20.0])
+    assert equal_jfi == 1.0
+    skewed_jfi = engine.compute_jains_fairness_index([90.0, 5.0, 3.0, 2.0])
+    assert skewed_jfi < 0.65
+
+    # 2. Successful transaction
+    pols = dict(engine.current_policies)
+    ok, evt = engine.execute_policy_transaction(
+        new_policies=pols,
+        tc_adapter=adapter,
+        wan_capacity_mbps=100.0,
+        reason="Test transactional update",
+    )
+    assert ok is True
+    assert engine.lifecycle_state in ("DRY_RUN", "VERIFIED")
+    assert "APPLY_ADAPTIVE_QOS" in evt.decision
+
+    # 3. Failed transaction due to starvation floor violation (< 5%)
+    bad_pols = dict(pols)
+    bad_pols["pol-bulk"] = QoSPolicyRule(
+        id="pol-bulk",
+        traffic_class="Bulk Downloads",
+        priority_tier=5,
+        min_share_pct=2.0,  # Violates 5% floor
+        max_rate_mbps=50.0,
+        target_latency_ms=200,
+        queue_discipline="HTB-Priority",
+    )
+    fail_ok, fail_evt = engine.execute_policy_transaction(
+        new_policies=bad_pols,
+        tc_adapter=adapter,
+        wan_capacity_mbps=100.0,
+        reason="Starvation test update",
+    )
+    assert fail_ok is False
+    assert engine.lifecycle_state == "FAILED"
+    assert "REJECT_POLICY_MUTATION" in fail_evt.decision
+

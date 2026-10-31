@@ -124,6 +124,7 @@ class PolicyEngine:
         self.step_index = 0
         self.audit_events: List[PolicyEventRecord] = []
         self.max_events: int = 200
+        self.lifecycle_state: str = "VERIFIED"  # PROPOSED | VALIDATING | APPLYING | APPLIED_UNVERIFIED | VERIFIED | FAILED | ROLLING_BACK | ROLLED_BACK | DRY_RUN
 
         # Initial baseline policies
         now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -338,6 +339,120 @@ class PolicyEngine:
             "warnings": warnings,
             "requiresConfirmation": len(warnings) > 0 or len(proposed_changes) >= 3,
         }
+
+    def execute_policy_transaction(
+        self,
+        new_policies: Dict[str, QoSPolicyRule],
+        tc_adapter: Any,
+        wan_capacity_mbps: float,
+        reason: str = "Automated adaptation",
+        severity: str = "ADAPTATION",
+    ) -> Tuple[bool, PolicyEventRecord]:
+        """
+        Execute an atomic transactional policy lifecycle:
+        PROPOSED -> VALIDATING -> APPLYING -> VERIFIED (or FAILED -> ROLLED_BACK).
+        """
+        import uuid
+        now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # 1. Proposed
+        self.lifecycle_state = "PROPOSED"
+
+        # 2. Validating constraints
+        self.lifecycle_state = "VALIDATING"
+        total_floor = sum(p.min_share_pct for p in new_policies.values() if p.enabled)
+        if any(p.min_share_pct < 5.0 for p in new_policies.values() if p.enabled):
+            self.lifecycle_state = "FAILED"
+            event = PolicyEventRecord(
+                id=f"evt-{uuid.uuid4().hex[:8]}",
+                timestamp=now_str,
+                step_index=self.step_index,
+                decision="REJECT_POLICY_MUTATION",
+                reason=f"Validation failed: Starvation guard violated (class floor < 5%)",
+                policy_effect="Rejected mutation; previous active policy retained",
+                outcome="Validation failure",
+                severity="CONGESTION",
+            )
+            self.audit_events.append(event)
+            return False, event
+
+        if total_floor > 100.0:
+            self.lifecycle_state = "FAILED"
+            event = PolicyEventRecord(
+                id=f"evt-{uuid.uuid4().hex[:8]}",
+                timestamp=now_str,
+                step_index=self.step_index,
+                decision="REJECT_POLICY_MUTATION",
+                reason=f"Validation failed: Total guaranteed floors ({total_floor:.1f}%) exceed 100% link capacity",
+                policy_effect="Rejected mutation; previous active policy retained",
+                outcome="Validation failure",
+                severity="CONGESTION",
+            )
+            self.audit_events.append(event)
+            return False, event
+
+        # Scale down slightly if total floors exceed 90% link safety boundary
+        if total_floor > 90.0:
+            scale = 90.0 / total_floor
+            for p in new_policies.values():
+                if p.enabled:
+                    p.min_share_pct = max(5.0, round(p.min_share_pct * scale, 1))
+
+        # 3. Applying
+        self.lifecycle_state = "APPLYING"
+        self.step_index += 1
+        state_ver = f"pol-v{self.step_index}.0"
+
+        enf_res = tc_adapter.apply_hierarchy(
+            wan_rate_mbps=wan_capacity_mbps,
+            policy_rules=new_policies,
+            state_version=state_ver,
+        )
+
+        # 4. Verify & Commit
+        if enf_res.success:
+            self.current_policies = new_policies
+            self.state_version = state_ver
+            self.lifecycle_state = "DRY_RUN" if enf_res.is_dry_run else "VERIFIED"
+
+            event = PolicyEventRecord(
+                id=f"evt-{uuid.uuid4().hex[:8]}",
+                timestamp=now_str,
+                step_index=self.step_index,
+                decision="APPLY_ADAPTIVE_QOS",
+                reason=reason,
+                policy_effect=f"Updated {len(new_policies)} policy classes to match {self.state_version} ({self.lifecycle_state})",
+                outcome=f"Policy verified on shaper ({len(enf_res.verified_classes)} classes confirmed)",
+                severity=severity,
+                provenance="MEASURED_LIVE",
+            )
+            self.audit_events.append(event)
+            if len(self.audit_events) > self.max_events:
+                self.audit_events.pop(0)
+            return True, event
+        else:
+            # 5. Rollback on failure
+            self.lifecycle_state = "ROLLING_BACK"
+            tc_adapter.rollback_to_safe_baseline()
+            rb_event = self.rollback_to_baseline(reason=f"Enforcement error: {enf_res.error_message}")
+            self.lifecycle_state = "ROLLED_BACK"
+            return False, rb_event
+
+    def compute_jains_fairness_index(self, allocations: List[float]) -> float:
+        """
+        Compute Jain's Fairness Index over bandwidth allocations:
+        J(x) = (sum x_i)^2 / (n * sum x_i^2)
+        Returns float between 1/n (extreme unfairness) and 1.0 (perfect equality).
+        """
+        valid = [max(0.001, float(x)) for x in allocations if x is not None]
+        if not valid:
+            return 1.0
+        n = len(valid)
+        sum_x = sum(valid)
+        sum_sq = sum(x * x for x in valid)
+        if sum_sq == 0.0:
+            return 1.0
+        return round((sum_x * sum_x) / (n * sum_sq), 3)
 
     def apply_policy(
         self,

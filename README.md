@@ -40,39 +40,36 @@ Built upon the Nano-Stream research foundation, **IntentQoS** provides an adapti
 - [OpenAPI Specification](docs/api/openapi.yaml)
 - [Home Traffic Taxonomy](docs/data/taxonomy.md)
 - [Canonical Schema Manifest](docs/data/schema_manifest.json)
+- [Live QoS Demonstration Report](results/live_qos_summary.md)
 - [Benchmark Summary Report](results/benchmark_summary.md)
 - [Security Review](docs/security/review.md)
 - [Licenses & Limitations](docs/licenses_and_limitations.md)
-- [Task Tracker CSV](Docs/IntentQoS_Remaining_Work_Tracker.csv)
+- [Task Tracker CSV](Docs/IntentQoS_Remaining_Work_Tracker_v2.csv)
 
 ### Quick Commands
 ```bash
-# Run automated pytest test suite (27 passing tests)
-.venv/bin/pytest tests/ -v
+# Launch both Backend (port 8080) and Frontend (port 3000)
+./run.sh
 
-# Run latency benchmark on quantized INT8 model
-.venv/bin/python scripts/measure_latency.py --model checkpoints/home_cnn_quantized.pt --samples 500
+# Run all automated tests (32 Python tests + 15 Frontend tests)
+./run.sh test
 
-# Execute full baseline benchmark matrix
-.venv/bin/python scripts/run_experiments.py
+# Execute closed-loop adaptive QoS demonstration & verification
+./run.sh demo
 
-# Start FastAPI Management API
-.venv/bin/python -m uvicorn api.server:app --port 8080
+# Run baseline comparison benchmarks across S1-S5
+./run.sh benchmark
 
-# Build Frontend
-cd Frontend/intentqos-—-adaptive-network-qos-console && npm run build
+# Start only API or Frontend
+./run.sh api
+./run.sh frontend
 ```
 
 ---
 
 ## Research Paper
 
----
-
-## Research Paper
-
 **IEEE Xplore:**
-
 https://ieeexplore.ieee.org/document/11504604/
 
 The repository contains the implementation, experiment artifacts,

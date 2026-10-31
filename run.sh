@@ -11,7 +11,8 @@
 #   ./run.sh             # Starts both Backend (port 8080) and Frontend (port 3000)
 #   ./run.sh api         # Starts only the FastAPI Management Backend
 #   ./run.sh frontend    # Starts only the React Web Console Frontend
-#   ./run.sh test        # Runs all automated unit, integration, and stress tests
+#   ./run.sh test        # Runs all automated backend and frontend tests
+#   ./run.sh demo        # Runs the end-to-end live adaptive QoS closed-loop demo
 #   ./run.sh benchmark   # Runs all 5 baseline profiles across scenarios S1-S5
 # ===============================================================================
 
@@ -42,8 +43,16 @@ case "$1" in
         ;;
 
     test)
-        echo "[*] Running automated test suite (pytest)..."
-        exec "$PYTHON_BIN" -m pytest tests/ -v
+        echo "[*] Running backend automated test suite (pytest)..."
+        "$PYTHON_BIN" -m pytest tests/ -v
+        echo "[*] Running frontend automated test suite..."
+        cd "$PROJECT_ROOT/Frontend/intentqos-—-adaptive-network-qos-console"
+        npm test
+        ;;
+
+    demo)
+        echo "[*] Running end-to-end live adaptive QoS closed-loop demo..."
+        exec "$PYTHON_BIN" scripts/demo_live_qos_loop.py
         ;;
 
     benchmark)
